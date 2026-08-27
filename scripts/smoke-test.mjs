@@ -117,6 +117,113 @@ await step("dark mode renders", async () => {
   await dark.close();
 });
 
+await step("daily quote is shown", async () => {
+  await page.goto(`${base}/`);
+  await page.waitForSelector("text=Needs attention");
+  const q = await page.locator("blockquote").first().innerText();
+  if (!q || q.length < 10) throw new Error("no quote rendered");
+  console.log(`      quote: ${q.slice(0, 60)}…`);
+});
+
+await step("wordmark renders in sidebar", async () => {
+  await page.waitForSelector('text=RALUX');
+  await page.waitForSelector('text=Luxury Property Management');
+});
+
+await step("tasks page has one-off / recurring tabs", async () => {
+  await page.goto(`${base}/tasks`);
+  await page.waitForSelector('a.tab:has-text("One-off tasks")');
+  await page.waitForSelector('a.tab:has-text("Recurring tasks")');
+});
+await page.screenshot({ path: `${out}/11-tasks-oneoff.png`, fullPage: true });
+
+await step("completed tasks are in their own section", async () => {
+  const summary = page.locator('summary:has-text("Completed")');
+  await summary.waitFor({ timeout: 5000 });
+  // completed items must not be in the main open table
+  const openTable = page.locator("table").first();
+  const doneInOpen = await openTable.locator('text=Reconcile August bank statement').count();
+  if (doneInOpen > 0) throw new Error("a completed task is still in the open table");
+  await summary.click();
+  await page.waitForSelector('text=Reconcile August bank statement');
+});
+
+await step("recurring tab shows only recurring tasks", async () => {
+  await page.click('a.tab:has-text("Recurring tasks")');
+  await page.waitForSelector('text=Weekly pool chemical check');
+  const oneOff = await page.locator('table').first().locator('text=Approve September owner payouts').count();
+  if (oneOff > 0) throw new Error("a one-off task leaked into the recurring tab");
+});
+await page.screenshot({ path: `${out}/12-tasks-recurring.png`, fullPage: true });
+
+await step("inline priority change on the task list saves", async () => {
+  await page.goto(`${base}/tasks`);
+  const row = page.locator('tr', { hasText: "Renew Hostaway subscription" }).first();
+  const prioritySelect = row.locator('select[aria-label="Priority"]');
+  await prioritySelect.selectOption("urgent");
+  await page.waitForTimeout(1500);
+  await page.reload();
+  const after = await page.locator('tr', { hasText: "Renew Hostaway subscription" }).first()
+    .locator('select[aria-label="Priority"]').inputValue();
+  if (after !== "urgent") throw new Error(`priority did not persist, got ${after}`);
+});
+
+await step("inline due-date change saves", async () => {
+  const row = page.locator('tr', { hasText: "Renew Hostaway subscription" }).first();
+  await row.locator('input[aria-label="Due date"]').fill("2026-12-24");
+  await page.waitForTimeout(1500);
+  await page.reload();
+  const after = await page.locator('tr', { hasText: "Renew Hostaway subscription" }).first()
+    .locator('input[aria-label="Due date"]').inputValue();
+  if (after !== "2026-12-24") throw new Error(`due date did not persist, got ${after}`);
+});
+
+await step("marking done inline moves the task to Completed", async () => {
+  const row = page.locator('tr', { hasText: "Renew Hostaway subscription" }).first();
+  await row.locator('select[aria-label="Status"]').selectOption("done");
+  await page.waitForTimeout(1800);
+  await page.reload();
+  const stillOpen = await page.locator("table").first()
+    .locator('text=Renew Hostaway subscription').count();
+  if (stillOpen > 0) throw new Error("done task still in the open table");
+  await page.click('summary:has-text("Completed")');
+  await page.waitForSelector('text=Renew Hostaway subscription');
+});
+
+await step("ideas list is inline-editable", async () => {
+  await page.goto(`${base}/ideas`);
+  const row = page.locator('tr', { hasText: "Switch to LED across all properties" }).first();
+  await row.locator('select[aria-label="Impact"]').selectOption("high");
+  await page.waitForTimeout(1500);
+  await page.reload();
+  const after = await page.locator('tr', { hasText: "Switch to LED across all properties" }).first()
+    .locator('select[aria-label="Impact"]').inputValue();
+  if (after !== "high") throw new Error(`impact did not persist, got ${after}`);
+});
+await page.screenshot({ path: `${out}/13-ideas.png`, fullPage: true });
+
+await step("event time is a 15-minute dropdown", async () => {
+  await page.goto(`${base}/events/new`);
+  const sel = page.locator('select[name="start_time"]');
+  await sel.waitFor();
+  const count = await sel.locator("option").count();
+  if (count !== 97) throw new Error(`expected 96 times + blank = 97 options, got ${count}`);
+  const vals = await sel.locator("option").allInnerTexts();
+  if (!vals.some((v) => v.startsWith("09:15"))) throw new Error("missing 09:15 option");
+  if (vals.some((v) => v.startsWith("09:05"))) throw new Error("found a non-15-minute option");
+});
+
+await step("create an event with a dropdown time", async () => {
+  await page.fill('input[name="title"]', "Inline test event");
+  await page.fill('input[name="start_date"]', "2026-09-10");
+  await page.selectOption('select[name="start_time"]', "14:45");
+  await page.click('button[type="submit"]');
+  await page.waitForSelector("text=Inline test event", { timeout: 15000 });
+  await page.waitForSelector("text=2:45 pm");
+});
+await page.screenshot({ path: `${out}/14-event.png`, fullPage: true });
+
+
 if (errors.length) {
   console.log("\nBrowser errors:");
   for (const e of [...new Set(errors)]) console.log("  " + e);

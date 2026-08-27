@@ -12,6 +12,7 @@ import {
   upcomingAgenda,
 } from "@/lib/dashboard";
 import { compactMoney, formatShortDate, relativeDay, timeAgo } from "@/lib/format";
+import { quoteOfTheDay } from "@/lib/quotes";
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +29,7 @@ export default async function DashboardPage() {
 
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+  const quote = quoteOfTheDay();
 
   return (
     <>
@@ -39,7 +41,28 @@ export default async function DashboardPage() {
         >
           {greeting}, {user.name.split(" ")[0]}
         </h1>
-        <p className="text-sm mt-1.5" style={{ color: "var(--ink-3)" }}>
+
+        <figure
+          className="mt-3 mb-3.5 pl-3.5"
+          style={{ borderLeft: "2px solid color-mix(in srgb, var(--brand) 45%, transparent)" }}
+        >
+          <blockquote
+            style={{
+              fontFamily: "var(--font-display)",
+              fontSize: "1.0625rem",
+              lineHeight: 1.45,
+              color: "var(--ink-2)",
+              fontStyle: "italic",
+            }}
+          >
+            “{quote.text}”
+          </blockquote>
+          <figcaption className="text-xs mt-1" style={{ color: "var(--ink-3)" }}>
+            {quote.author}
+          </figcaption>
+        </figure>
+
+        <p className="text-sm" style={{ color: "var(--ink-3)" }}>
           {attention.length > 0
             ? `${attention.length} ${attention.length === 1 ? "thing needs" : "things need"} your attention today.`
             : "Nothing is overdue. Good place to be."}

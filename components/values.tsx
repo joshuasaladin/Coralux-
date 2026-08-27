@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Chip } from "./ui";
 import { optionLabel, optionTone, type EntityKey, type Field } from "@/lib/entities";
 import { formatDate, money, relativeDay } from "@/lib/format";
+import { formatTime } from "@/lib/time-options";
 
 export type RefMaps = Partial<Record<EntityKey, Map<string, string>>>;
 
@@ -67,6 +68,9 @@ export function FieldValue({
         </span>
       );
     }
+
+    case "time":
+      return <span className="whitespace-nowrap tabular-nums">{formatTime(value)}</span>;
 
     case "bool":
       return value ? <Chip tone="good">Yes</Chip> : <span style={dim}>No</span>;

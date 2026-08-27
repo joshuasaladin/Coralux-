@@ -1,8 +1,10 @@
 import Link from "next/link";
 import { FieldValue, type RefMaps } from "./values";
+import InlineField from "./InlineField";
 import { EmptyState } from "./ui";
 import { optionLabel, type Entity, type Field } from "@/lib/entities";
 import { recordTitle } from "@/lib/records";
+import { formatDate, relativeDay } from "@/lib/format";
 
 export default function DataTable({
   entity,
@@ -12,6 +14,7 @@ export default function DataTable({
   emptyTitle,
   emptyHint,
   hrefBase,
+  readOnly,
 }: {
   entity: Entity;
   rows: Record<string, any>[];
@@ -20,6 +23,8 @@ export default function DataTable({
   emptyTitle?: string;
   emptyHint?: string;
   hrefBase?: string;
+  /** render plain values even for editable fields (used by the archive table) */
+  readOnly?: boolean;
 }) {
   if (!rows.length) {
     return (
@@ -35,6 +40,16 @@ export default function DataTable({
   const subtitleField = entity.subtitleField
     ? entity.fields.find((f) => f.name === entity.subtitleField)
     : undefined;
+  const settled = (row: Record<string, any>) =>
+    row.status === "done" || row.status === "paid" || Boolean(row.completed_at);
+
+  /** "2 days overdue" / "in 4 days" — but never just a repeat of the date. */
+  const dateHint = (row: Record<string, any>, name: string): string | null => {
+    const value = row[name];
+    if (!value || settled(row)) return null;
+    const relative = relativeDay(value);
+    return relative === formatDate(value) ? null : relative;
+  };
 
   return (
     <div className="scroll-x">
@@ -68,12 +83,22 @@ export default function DataTable({
               </td>
               {rest.map((c) => (
                 <td key={c.name}>
-                  <FieldValue
-                    field={c}
-                    row={row}
-                    refMaps={refMaps}
-                    emphasiseDueDate={c.name === "due_date" || c.name === "next_due" || c.name === "end_date"}
-                  />
+                  {c.editable && !readOnly ? (
+                    <InlineField
+                      entityKey={entity.key}
+                      recordId={row.id}
+                      field={c}
+                      value={row[c.name]}
+                      hint={c.type === "date" ? dateHint(row, c.name) : null}
+                    />
+                  ) : (
+                    <FieldValue
+                      field={c}
+                      row={row}
+                      refMaps={refMaps}
+                      emphasiseDueDate={c.name === "due_date" || c.name === "next_due" || c.name === "end_date"}
+                    />
+                  )}
                 </td>
               ))}
             </tr>

@@ -2,29 +2,25 @@ import { redirect } from "next/navigation";
 import Logo from "@/components/Logo";
 import LoginForm from "@/components/LoginForm";
 import { currentUser } from "@/lib/auth";
+import { customLogo } from "@/lib/branding";
 
 export const dynamic = "force-dynamic";
 
 export default async function LoginPage() {
   if (await currentUser()) redirect("/");
+  const logoSrc = customLogo();
 
   return (
     <div className="min-h-screen grid lg:grid-cols-2">
       <div className="flex items-center justify-center px-6 py-16">
         <div className="w-full max-w-sm">
-          <div className="flex items-center gap-3 mb-8">
-            <Logo size={38} />
-            <div>
-              <div
-                className="font-semibold tracking-tight"
-                style={{ fontFamily: "var(--font-display)", fontSize: "1.5rem" }}
-              >
-                Coralux HQ
-              </div>
-              <div className="text-[.68rem] tracking-[.16em] uppercase" style={{ color: "var(--ink-3)" }}>
-                Luxury Property Management
-              </div>
-            </div>
+          <div className="mb-9">
+            {logoSrc ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={logoSrc} alt="Coralux" style={{ maxWidth: 300, maxHeight: 86, objectFit: "contain", objectPosition: "left" }} />
+            ) : (
+              <Logo size={34} />
+            )}
           </div>
 
           <h1 className="section-title mb-1">Sign in</h1>

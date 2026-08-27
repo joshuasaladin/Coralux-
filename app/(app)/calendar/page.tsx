@@ -4,6 +4,7 @@ import { Card, PageHeader } from "@/components/ui";
 import { atLeast, requireUser } from "@/lib/auth";
 import { all } from "@/lib/db";
 import { isEnabled } from "@/lib/entities";
+import { formatTime } from "@/lib/time-options";
 
 export const dynamic = "force-dynamic";
 
@@ -180,7 +181,7 @@ export default async function CalendarPage({
                     style={{ fontSize: ".68rem", padding: ".1rem .35rem" }}
                     title={item.title}
                   >
-                    {item.time ? `${item.time} ` : ""}
+                    {item.time ? `${formatTime(item.time)} ` : ""}
                     {item.title}
                   </Link>
                 ))}

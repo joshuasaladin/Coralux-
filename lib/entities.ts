@@ -7,6 +7,7 @@ export type FieldType =
   | "number"
   | "money"
   | "date"
+  | "time"
   | "select"
   | "ref"
   | "bool"
@@ -33,6 +34,15 @@ export type Field = {
   help?: string;
   placeholder?: string;
   full?: boolean;
+  /** editable straight from the list row, without opening the record */
+  editable?: boolean;
+};
+
+/** A saved split of a list, shown as tabs above the table. */
+export type EntityTab = {
+  key: string;
+  label: string;
+  match: (row: Record<string, any>) => boolean;
 };
 
 export type Related = {
@@ -57,6 +67,10 @@ export type Entity = {
   searchFields: string[];
   /** minimum role required to open this section at all */
   minRole?: Role;
+  /** splits the list into tabs */
+  tabs?: EntityTab[];
+  /** finished records, moved out of the main table into their own section */
+  archive?: { label: string; match: (row: Record<string, any>) => boolean };
 };
 
 export type EntityKey =
@@ -185,15 +199,28 @@ export const ENTITIES: Record<EntityKey, Entity> = {
     fields: [
       { name: "title", label: "Task", type: "text", required: true, inList: true, full: true },
       { name: "description", label: "Details", type: "textarea", full: true },
-      { name: "status", label: "Status", type: "select", options: STATUS_TASK, inList: true, required: true },
-      { name: "priority", label: "Priority", type: "select", options: PRIORITY, inList: true, required: true },
-      { name: "due_date", label: "Due date", type: "date", inList: true },
+      { name: "status", label: "Status", type: "select", options: STATUS_TASK, inList: true, required: true, editable: true },
+      { name: "priority", label: "Priority", type: "select", options: PRIORITY, inList: true, required: true, editable: true },
+      { name: "due_date", label: "Due date", type: "date", inList: true, editable: true },
       { name: "assignee_id", label: "Assigned to", type: "ref", ref: "employees", inList: true },
       { name: "recurrence", label: "Repeats", type: "select", options: RECURRENCE },
       { name: "project_id", label: "Project", type: "ref", ref: "projects", group: "Links" },
       { name: "property_id", label: "Property", type: "ref", ref: "properties", group: "Links" },
       { name: "vendor_id", label: "Vendor", type: "ref", ref: "vendors", group: "Links" },
     ],
+    tabs: [
+      {
+        key: "oneoff",
+        label: "One-off tasks",
+        match: (r) => !r.recurrence || r.recurrence === "none",
+      },
+      {
+        key: "recurring",
+        label: "Recurring tasks",
+        match: (r) => Boolean(r.recurrence) && r.recurrence !== "none",
+      },
+    ],
+    archive: { label: "Completed", match: (r) => r.status === "done" },
   },
 
   projects: {
@@ -307,12 +334,14 @@ export const ENTITIES: Record<EntityKey, Entity> = {
           { value: "done", label: "Done", tone: "good" },
           { value: "parked", label: "Parked", tone: "muted" },
         ],
+        editable: true,
       },
       {
         name: "impact",
         label: "Impact",
         type: "select",
         inList: true,
+        editable: true,
         options: [
           { value: "low", label: "Low", tone: "muted" },
           { value: "medium", label: "Medium", tone: "neutral" },
@@ -323,14 +352,17 @@ export const ENTITIES: Record<EntityKey, Entity> = {
         name: "effort",
         label: "Effort",
         type: "select",
+        inList: true,
+        editable: true,
         options: [
-          { value: "low", label: "Low" },
-          { value: "medium", label: "Medium" },
-          { value: "high", label: "High" },
+          { value: "low", label: "Low", tone: "muted" },
+          { value: "medium", label: "Medium", tone: "neutral" },
+          { value: "high", label: "High", tone: "warn" },
         ],
       },
       { name: "author_id", label: "Suggested by", type: "ref", ref: "employees" },
     ],
+    archive: { label: "Done & parked", match: (r) => r.status === "done" || r.status === "parked" },
   },
 
   invoices: {
@@ -888,7 +920,7 @@ export const ENTITIES: Record<EntityKey, Entity> = {
         ],
       },
       { name: "start_date", label: "Date", type: "date", inList: true, required: true },
-      { name: "start_time", label: "Time", type: "text", placeholder: "09:30", inList: true },
+      { name: "start_time", label: "Time", type: "time", inList: true },
       { name: "end_date", label: "Ends", type: "date" },
       { name: "location", label: "Location", type: "text", inList: true },
       { name: "property_id", label: "Property", type: "ref", ref: "properties" },

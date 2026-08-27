@@ -181,7 +181,38 @@ plain and portable.
 
 ## Branding
 
-`components/Logo.tsx` draws a placeholder coral mark in the Coralux palette.
-Drop the real logo in as `public/logo.svg` and replace the `<svg>` in that file
-with an `<img>`. Colours live at the top of `app/globals.css` — the teal is
-`#4d6a75`, the warm grey `#5c5250`. Light and dark mode both follow from there.
+Drop the real logo artwork into **`public/logo.svg`** (or `logo.png`) and the
+app picks it up automatically in the sidebar and on the sign-in screen — no
+code change needed. Until then it draws its own `C · coral · RALUX` wordmark
+from `components/Logo.tsx`.
+
+Colours live at the top of `app/globals.css` — the teal is `#4d6a75`, the warm
+grey `#5c5250`. Light and dark mode both follow from there.
+
+## A few conventions worth knowing
+
+**The daily quote** on the dashboard rotates once per day from the list in
+`lib/quotes.ts`, picked from the date — so everyone sees the same line, and it
+changes at midnight with no scheduled job. Add or remove freely; the rotation
+adapts to the length of the list.
+
+**Tabs and completed work.** A section can split its list into tabs and move
+finished records into their own collapsed section, both declared in
+`lib/entities.ts`:
+
+```ts
+tabs: [
+  { key: "oneoff",    label: "One-off tasks",   match: (r) => r.recurrence === "none" },
+  { key: "recurring", label: "Recurring tasks", match: (r) => r.recurrence !== "none" },
+],
+archive: { label: "Completed", match: (r) => r.status === "done" },
+```
+
+**Inline editing.** Mark a field `editable: true` and it becomes changeable
+straight from the list row — no opening the record. It saves the moment you
+pick a value. Used today for task status, priority and due date, and for idea
+status, impact and effort.
+
+**Times** are always a 15-minute dropdown (`type: "time"`), never free text, so
+they are stored in one shape and sort correctly. The interval lives in
+`lib/time-options.ts`.

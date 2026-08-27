@@ -9,6 +9,7 @@ import {
   type ActionState,
 } from "@/lib/actions";
 import type { Field } from "@/lib/entities";
+import { TIME_OPTIONS, normaliseTime } from "@/lib/time-options";
 
 type Options = Record<string, { value: string; label: string }[]>;
 
@@ -126,6 +127,24 @@ function FieldInput({
       <select id={field.name} name={field.name} className="select" defaultValue={value ?? ""}>
         <option value="">—</option>
         {options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+    );
+  }
+
+  if (field.type === "time") {
+    return (
+      <select
+        id={field.name}
+        name={field.name}
+        className="select"
+        defaultValue={normaliseTime(value)}
+      >
+        <option value="">—</option>
+        {TIME_OPTIONS.map((o) => (
           <option key={o.value} value={o.value}>
             {o.label}
           </option>

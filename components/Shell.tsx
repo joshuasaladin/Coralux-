@@ -14,10 +14,12 @@ type NavGroup = { group: string; items: NavItem[] };
 export default function Shell({
   nav,
   user,
+  logoSrc,
   children,
 }: {
   nav: NavGroup[];
   user: { name: string; email: string; role: Role };
+  logoSrc?: string | null;
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
@@ -28,19 +30,15 @@ export default function Shell({
 
   const sidebar = (
     <div className="flex flex-col h-full">
-      <div className="flex items-center gap-2.5 px-3 py-4">
-        <Logo size={28} />
-        <div className="leading-tight">
-          <div
-            className="font-semibold tracking-tight"
-            style={{ fontFamily: "var(--font-display)", fontSize: "1.15rem" }}
-          >
-            Coralux HQ
-          </div>
-          <div className="text-[.68rem] tracking-[.14em] uppercase" style={{ color: "var(--ink-3)" }}>
-            Property Management
-          </div>
-        </div>
+      <div className="px-3 pt-5 pb-4">
+        <Link href="/" className="block hover:opacity-80 transition-opacity">
+          {logoSrc ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={logoSrc} alt="Coralux" style={{ width: "100%", maxHeight: 62, objectFit: "contain", objectPosition: "left" }} />
+          ) : (
+            <Logo size={26} />
+          )}
+        </Link>
       </div>
 
       <nav className="flex-1 overflow-y-auto px-2 pb-4">

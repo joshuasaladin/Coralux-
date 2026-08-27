@@ -56,9 +56,38 @@ export default async function ListPage({
     if (typeof value === "string" && value) filters[field.name] = value;
   }
 
-  const rows = listRecords(entity, { search, filters });
+  const allRows = listRecords(entity, { search, filters });
   const refMaps = refMapsFor(entity);
   const columns = visibleFields(entity, user.role).filter((f) => f.inList);
+
+  // tabs (e.g. one-off vs recurring tasks)
+  const tabs = entity.tabs ?? [];
+  const activeTabKey =
+    typeof query.tab === "string" && tabs.some((t) => t.key === query.tab)
+      ? query.tab
+      : (tabs[0]?.key ?? null);
+  const activeTab = tabs.find((t) => t.key === activeTabKey);
+  const scoped = activeTab ? allRows.filter(activeTab.match) : allRows;
+
+  // finished records move into their own section below the table
+  const archive = entity.archive;
+  const rows = archive ? scoped.filter((r) => !archive.match(r)) : scoped;
+  const archivedRows = archive ? scoped.filter((r) => archive.match(r)) : [];
+
+  const tabHref = (key: string) => {
+    const params = new URLSearchParams();
+    if (search) params.set("q", search);
+    for (const [k, v] of Object.entries(filters)) params.set(k, v);
+    params.set("tab", key);
+    return `/${entity.key}?${params.toString()}`;
+  };
+
+  const tabCount = (key: string) => {
+    const tab = tabs.find((t) => t.key === key);
+    if (!tab) return 0;
+    const inTab = allRows.filter(tab.match);
+    return archive ? inTab.filter((r) => !archive.match(r)).length : inTab.length;
+  };
 
   const totals = summarise(entity.key, rows);
 
@@ -75,6 +104,22 @@ export default async function ListPage({
           </Link>
         }
       />
+
+      {tabs.length > 0 && (
+        <div className="flex items-center mb-4" style={{ borderBottom: "1px solid var(--line)" }}>
+          {tabs.map((tab) => (
+            <Link
+              key={tab.key}
+              href={tabHref(tab.key)}
+              className="tab"
+              data-active={tab.key === activeTabKey}
+            >
+              {tab.label}
+              <span className="chip chip-muted ml-2">{tabCount(tab.key)}</span>
+            </Link>
+          ))}
+        </div>
+      )}
 
       <ListToolbar entity={entity} search={search} filters={filters} />
 
@@ -109,8 +154,37 @@ export default async function ListPage({
       </div>
 
       <p className="text-xs mt-3" style={{ color: "var(--ink-3)" }}>
-        {rows.length} {rows.length === 1 ? entity.singular.toLowerCase() : entity.label.toLowerCase()}
+        {rows.length} open{" "}
+        {rows.length === 1 ? entity.singular.toLowerCase() : entity.label.toLowerCase()}
+        {archive && archivedRows.length > 0 && ` · ${archivedRows.length} ${archive.label.toLowerCase()}`}
       </p>
+
+      {archive && archivedRows.length > 0 && (
+        <details className="panel mt-5" style={{ overflow: "hidden" }}>
+          <summary
+            className="px-4 py-3 cursor-pointer flex items-center gap-2 text-sm font-semibold select-none"
+            style={{ listStyle: "none" }}
+          >
+            <span style={{ color: "var(--good-fg)", display: "inline-flex" }}>
+              <Icon name="check" className="w-4 h-4" />
+            </span>
+            {archive.label}
+            <span className="chip chip-muted">{archivedRows.length}</span>
+            <span className="ml-auto text-xs font-normal" style={{ color: "var(--ink-3)" }}>
+              click to expand
+            </span>
+          </summary>
+          <div style={{ borderTop: "1px solid var(--line)" }}>
+            <DataTable
+              entity={entity}
+              rows={archivedRows}
+              columns={columns}
+              refMaps={refMaps}
+              readOnly
+            />
+          </div>
+        </details>
+      )}
     </>
   );
 }

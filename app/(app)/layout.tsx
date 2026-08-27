@@ -1,6 +1,7 @@
 import Shell from "@/components/Shell";
 import { atLeast, requireUser } from "@/lib/auth";
 import { NAV } from "@/lib/entities";
+import { customLogo } from "@/lib/branding";
 
 export default async function AppLayout({
   children,
@@ -13,7 +14,11 @@ export default async function AppLayout({
   })).filter((group) => group.items.length > 0);
 
   return (
-    <Shell nav={nav} user={{ name: user.name, email: user.email, role: user.role }}>
+    <Shell
+      nav={nav}
+      user={{ name: user.name, email: user.email, role: user.role }}
+      logoSrc={customLogo()}
+    >
       {children}
     </Shell>
   );
