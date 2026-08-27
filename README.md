@@ -181,10 +181,17 @@ plain and portable.
 
 ## Branding
 
-Drop the real logo artwork into **`public/logo.svg`** (or `logo.png`) and the
-app picks it up automatically in the sidebar and on the sign-in screen — no
-code change needed. Until then it draws its own `C · coral · RALUX` wordmark
-from `components/Logo.tsx`.
+The real logo lives at **`public/logo.png`** and is picked up automatically in
+the sidebar and on the sign-in screen — `lib/branding.ts` looks for
+`logo.svg` / `logo.png` / `.jpg` / `.webp` in that order, so a differently
+named file just needs renaming to one of those. Without a file present, the
+app falls back to a drawn `C · coral · RALUX` wordmark (`components/Logo.tsx`).
+
+The logo renders on a transparent background everywhere, matching the source
+PNG. Its dark brown wordmark is designed for a light backdrop — on dark mode
+it reads faint against the charcoal sidebar. If that becomes a problem, either
+swap in a light/white variant of the mark for dark mode, or say the word and
+a light backing card behind the logo (dark mode only) can be brought back.
 
 Colours live at the top of `app/globals.css` — the teal is `#4d6a75`, the warm
 grey `#5c5250`. Light and dark mode both follow from there.

@@ -34,7 +34,11 @@ export default function Shell({
         <Link href="/" className="block hover:opacity-80 transition-opacity">
           {logoSrc ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={logoSrc} alt="Coralux" style={{ width: "100%", maxHeight: 62, objectFit: "contain", objectPosition: "left" }} />
+            <img
+              src={logoSrc}
+              alt="Coralux"
+              style={{ maxWidth: "100%", maxHeight: 46, objectFit: "contain", objectPosition: "left", display: "block" }}
+            />
           ) : (
             <Logo size={26} />
           )}

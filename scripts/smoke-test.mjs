@@ -125,9 +125,10 @@ await step("daily quote is shown", async () => {
   console.log(`      quote: ${q.slice(0, 60)}…`);
 });
 
-await step("wordmark renders in sidebar", async () => {
-  await page.waitForSelector('text=RALUX');
-  await page.waitForSelector('text=Luxury Property Management');
+await step("logo renders in sidebar", async () => {
+  const hasImage = await page.locator('img[alt="Coralux"]').count();
+  const hasDrawnWordmark = await page.locator('text=RALUX').count();
+  if (!hasImage && !hasDrawnWordmark) throw new Error("no logo rendered in sidebar");
 });
 
 await step("tasks page has one-off / recurring tabs", async () => {

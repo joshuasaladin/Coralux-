@@ -17,7 +17,11 @@ export default async function LoginPage() {
           <div className="mb-9">
             {logoSrc ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={logoSrc} alt="Coralux" style={{ maxWidth: 300, maxHeight: 86, objectFit: "contain", objectPosition: "left" }} />
+              <img
+                src={logoSrc}
+                alt="Coralux"
+                style={{ maxWidth: 300, maxHeight: 74, objectFit: "contain", objectPosition: "left", display: "block" }}
+              />
             ) : (
               <Logo size={34} />
             )}
