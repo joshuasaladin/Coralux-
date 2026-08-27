@@ -1,0 +1,36 @@
+# Render Blueprint for Coralux HQ.
+#
+# In Render: New → Blueprint → connect this GitHub repository → Apply.
+# Render reads this file, creates the service, attaches the disk and deploys.
+# Every push to the branch below redeploys automatically.
+
+services:
+  - type: web
+    name: coralux-hq
+    runtime: node
+    plan: starter          # a persistent disk requires a paid instance; free instances have none
+    region: oregon         # frankfurt / singapore / ohio / oregon / virginia
+    branch: main
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /login
+    autoDeploy: true
+
+    # The database file and all uploaded documents live on this disk, so they
+    # survive deploys and restarts. Without it, everything resets on each deploy.
+    disk:
+      name: coralux-data
+      mountPath: /var/data
+      sizeGB: 5
+
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: DATA_DIR
+        value: /var/data
+      # Set these two in the Render dashboard before the first deploy — they
+      # create the first sign-in account. sync:false keeps them out of git.
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
