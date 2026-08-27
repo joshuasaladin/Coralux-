@@ -104,10 +104,12 @@ await step("disabled section shows the switch-on notice", async () => {
   await page.waitForSelector("text=not switched on yet");
 });
 
-await step("dark mode renders", async () => {
+await step("stays light even when the OS is set to dark", async () => {
   const dark = await browser.newContext({ colorScheme: "dark", viewport: { width: 1440, height: 950 } });
   const dp = await dark.newPage();
   await dp.goto(`${base}/login`);
+  const bg = await dp.evaluate(() => getComputedStyle(document.body).backgroundColor);
+  if (bg !== "rgb(246, 244, 242)") throw new Error(`expected the light background, got ${bg}`);
   await dp.fill('input[name="email"]', "admin@coralux.aw");
   await dp.fill('input[name="password"]', "coralux2026");
   await dp.click('button[type="submit"]');

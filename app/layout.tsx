@@ -5,13 +5,26 @@ export const metadata: Metadata = {
   title: "Coralux HQ",
   description:
     "The operating system for Coralux — tasks, invoices, payments, vendors, employees and documents in one connected place.",
+  appleWebApp: {
+    capable: true,
+    title: "Coralux HQ",
+    // "default" = light status bar with dark text, matching the app.
+    statusBarStyle: "default",
+  },
+  other: {
+    // Next only emits the newer standardised "mobile-web-app-capable" tag.
+    // iOS versions before 17.4 only recognise this prefixed one to hide the
+    // Safari chrome when launched from the home screen, so both go out.
+    "apple-mobile-web-app-capable": "yes",
+  },
 };
 
 export const viewport: Viewport = {
-  themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#f6f4f2" },
-    { media: "(prefers-color-scheme: dark)", color: "#16191b" },
-  ],
+  themeColor: "#f6f4f2",
+  // The app always renders in its light palette, regardless of the device
+  // theme — this tells browser chrome (scrollbars, form controls, the iOS
+  // status bar) the same thing color-scheme does in globals.css.
+  colorScheme: "light",
 };
 
 export default function RootLayout({

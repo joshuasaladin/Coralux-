@@ -188,10 +188,31 @@ named file just needs renaming to one of those. Without a file present, the
 app falls back to a drawn `C · coral · RALUX` wordmark (`components/Logo.tsx`).
 
 The logo renders on a transparent background everywhere, matching the source
-PNG. Its dark brown wordmark is designed for a light backdrop — on dark mode
-it reads faint against the charcoal sidebar. If that becomes a problem, either
-swap in a light/white variant of the mark for dark mode, or say the word and
-a light backing card behind the logo (dark mode only) can be brought back.
+PNG.
+
+**The app is always light** — there is no dark mode. `color-scheme: light`
+in `app/globals.css` plus the `viewport.colorScheme` in `app/layout.tsx` tell
+the browser (and, on iOS, the standalone status bar) to stay light regardless
+of the device's system theme. Covered by the smoke test's "stays light even
+when the OS is set to dark" check.
+
+## App icon / favicon / home screen
+
+The coral mark alone (no wordmark) is the icon everywhere an icon is needed:
+
+- **`app/icon.svg`** — the browser tab favicon, generated from the source
+  artwork with `sharp` (see the commit that added it for the script).
+- **`app/apple-icon.png`** — the iOS "Add to Home Screen" icon: 180×180, on an
+  opaque light background. iOS renders transparency poorly on home-screen
+  icons (older versions show black), so this one is intentionally not
+  transparent, unlike the sidebar logo.
+- **`public/icon-192.png`** / **`icon-512.png`** + **`app/manifest.ts`** — the
+  PWA manifest Android/Chrome use for "Add to Home Screen"; iOS Safari ignores
+  this in favor of `apple-icon.png` but reads the manifest's name/theme color
+  when launched standalone.
+
+To replace the mark, edit `app/icon.svg` (single source of truth) and
+regenerate the PNGs from it at the sizes above — resizing, not redrawing.
 
 Colours live at the top of `app/globals.css` — the teal is `#4d6a75`, the warm
 grey `#5c5250`. Light and dark mode both follow from there.

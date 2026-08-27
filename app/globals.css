@@ -40,28 +40,10 @@
   --info-bg: #e6eef2; --info-fg: #3a5f6e;
   --muted-bg: #eeebe8; --muted-fg: #6d6461;
   --shadow: 0 1px 2px rgba(38,34,32,.05), 0 8px 24px -12px rgba(38,34,32,.18);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg: #16191b;
-    --panel: #1e2325;
-    --panel-2: #232a2c;
-    --ink: #ecebe9;
-    --ink-2: #b9b3af;
-    --ink-3: #8d8783;
-    --line: #2e3639;
-    --line-2: #3b4548;
-    --brand: #8fb2bd;
-    --brand-ink: #b7d0d8;
-    --wordmark: #e2ddda;
-    --good-bg: #1c3529; --good-fg: #8fd3ac;
-    --warn-bg: #3a2e18; --warn-fg: #e8bd77;
-    --bad-bg: #3a201d;  --bad-fg: #ef9d90;
-    --info-bg: #1e2f38; --info-fg: #9cc6d6;
-    --muted-bg: #282f31; --muted-fg: #9a9491;
-    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px -12px rgba(0,0,0,.6);
-  }
+  /* Always light — tells the browser chrome (scrollbars, form controls,
+     the iOS status bar in standalone mode) not to switch to its own dark
+     variants even when the OS is in dark mode. */
+  color-scheme: light;
 }
 
 * { border-color: var(--line); }
