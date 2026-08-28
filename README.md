@@ -20,7 +20,8 @@ Phase one is switched on:
 | 📅 **Calendar** | Month grid combining events, task due dates and anything else that is scheduled |
 | 💡 **Ideas** | Improvements, marketing and future projects, scored by impact and effort |
 | 🤝 **Vendors** | Pool, landscaping, electrical, plumbing and the rest — with their contacts, notes and documents |
-| 🔐 **Admin** | Who can sign in, what each role sees |
+| 📋 **Listing Onboarding** | Every new property from first details collected to live on Airbnb/Guesty, tracked by a checklist |
+| 🔐 **Admin** | Who can sign in, what each role sees, and account management (create, edit role/status, reset password, delete) |
 
 Every record — a task, a vendor, an idea — carries its own **notes**,
 **documents** and **history**, and links to the other records it relates to.
@@ -252,3 +253,17 @@ status, impact and effort.
 **Times** are always a 15-minute dropdown (`type: "time"`), never free text, so
 they are stored in one shape and sort correctly. The interval lives in
 `lib/time-options.ts`.
+
+**Listing Onboarding** doesn't go through `lib/entities.ts` like the sections
+above — its checklist needs UI a generic table can't express, so it's a
+dedicated feature: `lib/listings.ts` (data + the default checklist template),
+`lib/listing-options.ts` (the client-safe bits — platform/status labels —
+split out because `listings.ts` pulls in the database layer), and its own
+pages under `app/(app)/listings/`. It still gets notes, documents and history
+for free, the same way every other record does, because those three panels
+key off a plain `(entity, entityId)` string pair rather than the entity
+registry. A listing's status follows its checklist automatically — check
+off the last step and it goes Active on its own — the same pattern invoices
+use to follow their payments. Edit the default checklist for new listings in
+`DEFAULT_STEPS` (`lib/listings.ts`) and the matching copy in `lib/seed.ts`;
+existing listings keep whatever steps they already have.

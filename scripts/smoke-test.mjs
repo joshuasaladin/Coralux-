@@ -227,6 +227,112 @@ await step("create an event with a dropdown time", async () => {
 await page.screenshot({ path: `${out}/14-event.png`, fullPage: true });
 
 
+// ---------------------------------------------------------------- admin delete
+await step("admin: create a throwaway user, then delete it", async () => {
+  await page.goto(`${base}/admin`);
+  await page.fill('#name', "Temp Tester");
+  await page.fill('#email', "temp.tester@coralux.aw");
+  await page.fill('#password', "temporary123");
+  await page.click('button:has-text("Create account")');
+  await page.waitForSelector("text=Temp Tester", { timeout: 15000 });
+});
+await page.screenshot({ path: `${out}/50-admin-with-temp-user.png`, fullPage: true });
+
+await step("admin: delete the throwaway user", async () => {
+  const row = page.locator("table tr", { hasText: "Temp Tester" });
+  page.once("dialog", (d) => d.accept());
+  await row.locator('button:has-text("Delete")').click();
+  await row.waitFor({ state: "detached", timeout: 15000 });
+  const stillThere = await page.locator("table tr", { hasText: "Temp Tester" }).count();
+  if (stillThere !== 0) throw new Error("user row still present after delete");
+});
+
+await step("admin: cannot delete own account (no delete button on self row)", async () => {
+  const selfRow = page.locator("tr", { hasText: "admin@coralux.com" });
+  const count = await selfRow.locator('button:has-text("Delete")').count();
+  if (count !== 0) throw new Error("delete button should not appear on the signed-in user's own row");
+});
+
+// ---------------------------------------------------------------- listings
+await step("listings: nav link present and page loads with seeded data", async () => {
+  await page.click('a:has-text("Listing Onboarding")');
+  await page.waitForURL(`${base}/listings`);
+  await page.waitForSelector("text=Malmok Cliff Villa");
+  await page.waitForSelector("text=Boca Chica Bungalow");
+  await page.waitForSelector("text=Oranjestad Lofts");
+});
+await page.screenshot({ path: `${out}/51-listings.png`, fullPage: true });
+
+await step("listings: seeded active listing shows 100% / Active", async () => {
+  const card = page.locator("a", { hasText: "Oranjestad Lofts" });
+  await card.locator("text=Active").waitFor();
+});
+
+await step("listings: create a new listing auto-seeds the checklist", async () => {
+  await page.goto(`${base}/listings/new`);
+  await page.fill('#name', "Playwright Test Villa");
+  await page.fill('#address', "Test Street 1");
+  await page.selectOption('#platforms', "guesty");
+  await page.click('button:has-text("Create listing")');
+  await page.waitForSelector("text=Onboarding checklist", { timeout: 15000 });
+  await page.waitForSelector("text=Professional photos taken");
+  const count = await page.locator('li:has-text("checked")').count(); // none checked yet
+  const totalSteps = await page.locator("ul li").count();
+  if (totalSteps < 12) throw new Error(`expected at least 12 steps, got ${totalSteps}`);
+});
+await page.screenshot({ path: `${out}/52-listing-detail-fresh.png`, fullPage: true });
+
+let listingUrl;
+await step("listings: checking off a step updates the counter", async () => {
+  listingUrl = page.url();
+  const before = await page.locator("header:has-text('Onboarding checklist') >> .. >> text=/\\d+\\/\\d+/").first().innerText().catch(() => null);
+  const firstCheckbox = page.locator("form button[aria-pressed]").first();
+  await firstCheckbox.click();
+  await page.waitForTimeout(1000);
+  await page.reload();
+  const chip = await page.locator("text=/^1\\/\\d+$/").first().innerText();
+  if (!chip.startsWith("1/")) throw new Error(`expected 1/N after checking one step, got ${chip}`);
+});
+
+await step("listings: add a custom step", async () => {
+  const addForm = page.locator("form", { has: page.locator('input[aria-label="Add a step"]') });
+  await addForm.locator('input[aria-label="Add a step"]').fill("Confirm insurance certificate on file");
+  await addForm.locator('button[type="submit"]').click();
+  await page.waitForSelector("text=Confirm insurance certificate on file", { timeout: 15000 });
+});
+
+await step("listings: checking every step flips status to Active automatically", async () => {
+  // check off all remaining boxes
+  for (let i = 0; i < 20; i++) {
+    const boxes = page.locator('form button[aria-pressed="false"]');
+    const n = await boxes.count();
+    if (n === 0) break;
+    await boxes.first().click();
+    await page.waitForTimeout(400);
+  }
+  await page.waitForTimeout(1000);
+  await page.reload();
+  await page.waitForSelector("text=Active", { timeout: 15000 });
+});
+await page.screenshot({ path: `${out}/53-listing-detail-complete.png`, fullPage: true });
+
+await step("listings: edit page loads and status can be set to Paused", async () => {
+  await page.goto(`${listingUrl}/edit`);
+  await page.selectOption('#status', "paused");
+  await page.click('button:has-text("Save changes")');
+  await page.waitForSelector("text=Paused", { timeout: 15000 });
+});
+
+await step("listings: delete the test listing", async () => {
+  page.once("dialog", (d) => d.accept());
+  await page.click('button:has-text("Delete")');
+  await page.waitForURL(`${base}/listings`, { timeout: 15000 });
+  await page.waitForLoadState("networkidle");
+  const gone = await page.locator("text=Playwright Test Villa").count();
+  if (gone !== 0) throw new Error("deleted listing still appears in the list");
+});
+
+
 if (errors.length) {
   console.log("\nBrowser errors:");
   for (const e of [...new Set(errors)]) console.log("  " + e);

@@ -457,6 +457,83 @@ export function seedIfEmpty(db: Database.Database) {
       }));
     }
 
+    // -------------------------------------------------------------- listings
+    const ONBOARDING_STEPS = [
+      "Property details collected (address, access, WiFi, house rules)",
+      "Professional photos taken",
+      "Listing title & description written",
+      "Amenities list finalized",
+      "Pricing & minimum-stay set",
+      "House rules & cancellation policy set",
+      "Calendar / availability set",
+      "Airbnb listing created",
+      "Guesty listing created & PMS connected",
+      "Channel manager sync verified (Airbnb ⇄ Guesty)",
+      "Payout / banking details configured",
+      "Listing published & live",
+    ];
+    const addListing = (
+      row: Record<string, unknown>,
+      doneCount: number,
+    ) => {
+      const listingId = uid();
+      insert("listings", stamped({ id: listingId, platforms: "both", assignee: null, notes: null, ...row }));
+      ONBOARDING_STEPS.forEach((label, i) =>
+        insert("listing_steps", {
+          id: uid(),
+          listing_id: listingId,
+          label,
+          sort: i,
+          done: i < doneCount ? 1 : 0,
+          done_at: i < doneCount ? ts : null,
+          created_at: ts,
+        }),
+      );
+      return listingId;
+    };
+
+    addListing(
+      {
+        name: "Malmok Cliff Villa",
+        address: "Malmok 12A",
+        owner_name: "Blue Horizon Ltd",
+        platforms: "both",
+        target_date: day(30),
+        assignee: "Ricardo Croes",
+        status: "in_progress",
+        notes: "Owner wants to see the listing live before the winter season.",
+      },
+      4, // matches the still-open "Photograph Malmok Cliff Villa" task
+    );
+
+    addListing(
+      {
+        name: "Boca Chica Bungalow",
+        address: "Boca Chica 7",
+        owner_name: "R. Kelkboom",
+        platforms: "airbnb",
+        target_date: day(45),
+        assignee: "Marisol Kock",
+        status: "in_progress",
+        notes: "Brand new to the portfolio — first walkthrough scheduled next week.",
+      },
+      0,
+    );
+
+    addListing(
+      {
+        name: "Oranjestad Lofts — Unit 3",
+        address: "Wilhelminastraat 63, Oranjestad",
+        owner_name: "Coralux NV",
+        platforms: "both",
+        target_date: day(-40),
+        assignee: "Ricardo Croes",
+        status: "active",
+        notes: null,
+      },
+      ONBOARDING_STEPS.length,
+    );
+
     // ----------------------------------------------------------------- notes
     const note = (entity: string, entityId: string, body: string, pinned = 0) =>
       insert("notes", stamped({ id: uid(), entity, entity_id: entityId, body, author_id: owner, pinned }));

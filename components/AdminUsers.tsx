@@ -5,6 +5,7 @@ import Icon from "./Icon";
 import SubmitButton from "./SubmitButton";
 import {
   createUserAction,
+  deleteUserAction,
   resetUserPasswordAction,
   updateUserAction,
   type ActionState,
@@ -74,6 +75,7 @@ export function NewUserForm({ employees }: { employees: { value: string; label: 
 export function UserRowControls({ user, isSelf }: { user: UserRow; isSelf: boolean }) {
   const [resetting, setResetting] = useState(false);
   const [state, resetAction] = useActionState<ActionState, FormData>(resetUserPasswordAction, null);
+  const [deleteState, deleteAction] = useActionState<ActionState, FormData>(deleteUserAction, null);
 
   return (
     <>
@@ -109,6 +111,24 @@ export function UserRowControls({ user, isSelf }: { user: UserRow; isSelf: boole
           {state?.ok && <span className="text-xs" style={{ color: "var(--good-fg)" }}>{state.ok}</span>}
         </form>
       )}
+
+      {!isSelf && (
+        <form
+          action={deleteAction}
+          onSubmit={(e) => {
+            if (!confirm(`Delete ${user.name}'s account? They will no longer be able to sign in. This cannot be undone.`)) {
+              e.preventDefault();
+            }
+          }}
+        >
+          <input type="hidden" name="user_id" value={user.id} />
+          <SubmitButton className="btn btn-sm btn-danger" pendingLabel="Deleting…">
+            <Icon name="trash" className="w-3.5 h-3.5" />
+            Delete
+          </SubmitButton>
+        </form>
+      )}
+      {deleteState?.error && <span className="text-xs" style={{ color: "var(--bad-fg)" }}>{deleteState.error}</span>}
     </>
   );
 }

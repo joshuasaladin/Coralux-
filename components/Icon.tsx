@@ -38,6 +38,7 @@ const P: Record<string, React.ReactNode> = {
   x: <><path d="M6 6l12 12M18 6 6 18" /></>,
   filter: <><path d="M3 5h18l-7 8v6l-4 2v-8L3 5Z" /></>,
   coral: <><path d="M12 21v-5M12 16c0-3-3-4-3-7M12 16c0-3 3-4 3-7M9 9C9 7 7.5 6 7.5 4M15 9c0-2 1.5-3 1.5-5M12 16V6" /></>,
+  clipboard: <><rect x="5" y="4.5" width="14" height="16.5" rx="2" /><path d="M9 4.5V3.5a1.5 1.5 0 0 1 1.5-1.5h3A1.5 1.5 0 0 1 15 3.5v1" /><path d="m8.5 12 2.2 2.2L15.5 10" /></>,
 };
 
 export default function Icon({ name, className = "w-4 h-4" }: Props) {

@@ -371,3 +371,31 @@ CREATE INDEX IF NOT EXISTS idx_notes_entity     ON notes(entity, entity_id);
 CREATE INDEX IF NOT EXISTS idx_files_entity     ON file_links(entity, entity_id);
 CREATE INDEX IF NOT EXISTS idx_activity_entity  ON activity(entity, entity_id);
 CREATE INDEX IF NOT EXISTS idx_events_start     ON events(start_date);
+
+-- ------------------------------------------------------------- listings
+
+CREATE TABLE IF NOT EXISTS listings (
+  id            TEXT PRIMARY KEY,
+  name          TEXT NOT NULL,
+  address       TEXT,
+  owner_name    TEXT,
+  platforms     TEXT NOT NULL DEFAULT 'both',    -- airbnb | guesty | both
+  target_date   TEXT,
+  assignee      TEXT,
+  status        TEXT NOT NULL DEFAULT 'in_progress', -- in_progress | active | paused
+  notes         TEXT,
+  created_at    TEXT NOT NULL,
+  updated_at    TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS listing_steps (
+  id          TEXT PRIMARY KEY,
+  listing_id  TEXT NOT NULL REFERENCES listings(id) ON DELETE CASCADE,
+  label       TEXT NOT NULL,
+  sort        INTEGER NOT NULL DEFAULT 0,
+  done        INTEGER NOT NULL DEFAULT 0,
+  done_at     TEXT,
+  created_at  TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_listing_steps_listing ON listing_steps(listing_id);

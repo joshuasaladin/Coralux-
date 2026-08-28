@@ -21,6 +21,14 @@ import {
   updateRecord,
 } from "./records";
 import { deleteFile, linkFile, storeUpload, unlinkFile } from "./files";
+import {
+  addStep,
+  createListing,
+  deleteListing,
+  deleteStep,
+  toggleStep,
+  updateListing,
+} from "./listings";
 
 export type ActionState = { error?: string; ok?: string } | null;
 
@@ -330,6 +338,33 @@ export async function resetUserPasswordAction(
   return { ok: "Password reset. They will need to sign in again." };
 }
 
+export async function deleteUserAction(
+  _prev: ActionState,
+  form: FormData,
+): Promise<ActionState> {
+  const user = await requireUser();
+  if (!atLeast(user.role, "admin")) return { error: "Admins only." };
+
+  const targetId = String(form.get("user_id") ?? "");
+  if (targetId === user.id) return { error: "You cannot delete your own account." };
+
+  const target = one<{ name: string; role: Role }>(`SELECT name, role FROM users WHERE id = ?`, [
+    targetId,
+  ]);
+  if (!target) return { error: "That account no longer exists." };
+
+  if (target.role === "owner") {
+    const owners = one<{ c: number }>(`SELECT COUNT(*) AS c FROM users WHERE role = 'owner'`);
+    if ((owners?.c ?? 0) <= 1) return { error: "There must be at least one owner account." };
+  }
+
+  run(`DELETE FROM sessions WHERE user_id = ?`, [targetId]);
+  run(`DELETE FROM users WHERE id = ?`, [targetId]);
+  logActivity("users", targetId, "deleted", `Removed ${target.name}'s account`, user.id);
+  revalidatePath("/admin");
+  return { ok: `${target.name}'s account has been deleted.` };
+}
+
 export async function saveSettingAction(form: FormData) {
   const user = await requireUser();
   if (!atLeast(user.role, "admin")) return;
@@ -339,4 +374,78 @@ export async function saveSettingAction(form: FormData) {
     [String(form.get("key") ?? ""), String(form.get("value") ?? "")],
   );
   revalidatePath("/admin");
+}
+
+// -------------------------------------------------------------- listings
+
+export async function createListingAction(
+  _prev: ActionState,
+  form: FormData,
+): Promise<ActionState> {
+  const user = await requireUser();
+  let listingId: string;
+  try {
+    listingId = createListing(form, user);
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Could not save." };
+  }
+  revalidatePath("/listings");
+  redirect(`/listings/${listingId}`);
+}
+
+export async function updateListingAction(
+  _prev: ActionState,
+  form: FormData,
+): Promise<ActionState> {
+  const user = await requireUser();
+  const listingId = String(form.get("__id") ?? "");
+  try {
+    updateListing(listingId, form, user);
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Could not save." };
+  }
+  revalidatePath("/listings");
+  revalidatePath(`/listings/${listingId}`);
+  redirect(`/listings/${listingId}`);
+}
+
+export async function deleteListingAction(form: FormData) {
+  const user = await requireUser();
+  if (!atLeast(user.role, "manager")) return;
+  const listingId = String(form.get("__id") ?? "");
+  deleteListing(listingId, user);
+  revalidatePath("/listings");
+  redirect("/listings");
+}
+
+export async function toggleListingStepAction(form: FormData) {
+  const user = await requireUser();
+  const listingId = String(form.get("__id") ?? "");
+  const stepId = String(form.get("step_id") ?? "");
+  toggleStep(stepId, user);
+  revalidatePath(`/listings/${listingId}`);
+  revalidatePath("/listings");
+}
+
+export async function addListingStepAction(
+  _prev: ActionState,
+  form: FormData,
+): Promise<ActionState> {
+  const user = await requireUser();
+  const listingId = String(form.get("__id") ?? "");
+  const label = String(form.get("label") ?? "");
+  if (!label.trim()) return { error: "Write the step first." };
+  addStep(listingId, label, user);
+  revalidatePath(`/listings/${listingId}`);
+  revalidatePath("/listings");
+  return { ok: "Step added." };
+}
+
+export async function deleteListingStepAction(form: FormData) {
+  const user = await requireUser();
+  const listingId = String(form.get("__id") ?? "");
+  const stepId = String(form.get("step_id") ?? "");
+  deleteStep(stepId, user);
+  revalidatePath(`/listings/${listingId}`);
+  revalidatePath("/listings");
 }

@@ -968,7 +968,7 @@ export function optionTone(field: Field, value: unknown): Tone {
 export const ENABLED_SECTIONS: EntityKey[] = ["tasks", "ideas", "vendors", "events"];
 
 /** Custom screens (not backed by a single entity) that are switched on. */
-export const ENABLED_PAGES: string[] = ["/", "/calendar", "/admin"];
+export const ENABLED_PAGES: string[] = ["/", "/calendar", "/admin", "/listings"];
 
 export function isEnabled(key: string): boolean {
   return (ENABLED_SECTIONS as string[]).includes(key);
@@ -993,6 +993,7 @@ const ALL_NAV: { group: string; items: NavItem[] }[] = [
     group: "Work",
     items: [
       { href: "/tasks", label: "Tasks", icon: "check", entity: "tasks" },
+      { href: "/listings", label: "Listing Onboarding", icon: "clipboard" },
       { href: "/projects", label: "Projects", icon: "layers", entity: "projects" },
       { href: "/requests", label: "Requests", icon: "inbox", entity: "requests" },
       { href: "/ideas", label: "Ideas", icon: "bulb", entity: "ideas" },

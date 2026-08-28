@@ -6,8 +6,13 @@ import Icon from "./Icon";
 import { atLeast, type Role } from "@/lib/roles";
 import { isEnabled, type EntityKey } from "@/lib/entities";
 
-const OPTIONS: { entity: EntityKey; label: string; icon: string; minRole?: Role }[] = [
+type Option =
+  | { entity: EntityKey; href?: undefined; label: string; icon: string; minRole?: Role }
+  | { entity?: undefined; href: string; label: string; icon: string; minRole?: Role };
+
+const OPTIONS: Option[] = [
   { entity: "tasks", label: "Task", icon: "check" },
+  { href: "/listings/new", label: "Listing onboarding", icon: "clipboard" },
   { entity: "events", label: "Calendar event", icon: "calendar" },
   { entity: "ideas", label: "Idea", icon: "bulb" },
   { entity: "vendors", label: "Vendor", icon: "wrench" },
@@ -37,7 +42,7 @@ export default function QuickAdd({ role }: { role: Role }) {
   }, [open]);
 
   const visible = OPTIONS.filter(
-    (o) => isEnabled(o.entity) && (!o.minRole || atLeast(role, o.minRole)),
+    (o) => (o.entity ? isEnabled(o.entity) : true) && (!o.minRole || atLeast(role, o.minRole)),
   );
 
   return (
@@ -54,8 +59,8 @@ export default function QuickAdd({ role }: { role: Role }) {
         >
           {visible.map((o) => (
             <Link
-              key={o.entity}
-              href={`/${o.entity}/new`}
+              key={o.entity ?? o.href}
+              href={o.href ?? `/${o.entity}/new`}
               className="nav-link"
               onClick={() => setOpen(false)}
               role="menuitem"
