@@ -2,6 +2,7 @@ import Shell from "@/components/Shell";
 import { atLeast, requireUser } from "@/lib/auth";
 import { NAV } from "@/lib/entities";
 import { customLogo } from "@/lib/branding";
+import { effectiveMinRole } from "@/lib/permissions";
 
 export default async function AppLayout({
   children,
@@ -10,7 +11,11 @@ export default async function AppLayout({
 
   const nav = NAV.map((group) => ({
     ...group,
-    items: group.items.filter((i) => !i.minRole || atLeast(user.role, i.minRole)),
+    items: group.items.filter((item) => {
+      const key = item.entity ?? item.href.replace(/^\//, "");
+      const min = effectiveMinRole(key, item.minRole ?? "staff");
+      return atLeast(user.role, min);
+    }),
   })).filter((group) => group.items.length > 0);
 
   return (

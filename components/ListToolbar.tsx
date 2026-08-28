@@ -1,7 +1,9 @@
+import AutoSubmitForm from "./AutoSubmitForm";
 import Icon from "./Icon";
 import type { Entity } from "@/lib/entities";
 
-/** A plain GET form — filters live in the URL, so views are shareable. */
+/** Filters live in the URL, so views stay shareable — and auto-apply, so
+ * nothing needs an Apply button. */
 export default function ListToolbar({
   entity,
   search,
@@ -16,14 +18,12 @@ export default function ListToolbar({
   );
 
   return (
-    <form
-      method="get"
-      className="flex flex-wrap items-end gap-2 mb-4"
-    >
+    <AutoSubmitForm className="flex flex-wrap items-end gap-2 mb-4">
       <div className="relative flex-1 min-w-[220px]">
         <Icon name="search" className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2" />
         <input
           name="q"
+          type="text"
           defaultValue={search ?? ""}
           className="input input-icon"
           placeholder={`Search ${entity.label.toLowerCase()}…`}
@@ -31,12 +31,7 @@ export default function ListToolbar({
       </div>
 
       {filterable.slice(0, 3).map((f) => (
-        <select
-          key={f.name}
-          name={f.name}
-          defaultValue={filters[f.name] ?? ""}
-          className="select w-auto min-w-[140px]"
-        >
+        <select key={f.name} name={f.name} defaultValue={filters[f.name] ?? ""} className="select w-auto min-w-[140px]">
           <option value="">All {f.label.toLowerCase()}</option>
           {f.options!.map((o) => (
             <option key={o.value} value={o.value}>
@@ -45,11 +40,6 @@ export default function ListToolbar({
           ))}
         </select>
       ))}
-
-      <button className="btn" type="submit">
-        <Icon name="filter" className="w-3.5 h-3.5" />
-        Apply
-      </button>
-    </form>
+    </AutoSubmitForm>
   );
 }

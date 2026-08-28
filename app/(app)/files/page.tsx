@@ -1,13 +1,15 @@
 import Link from "next/link";
+import AutoSubmitForm from "@/components/AutoSubmitForm";
 import FileUploadCard from "@/components/FileUploadCard";
 import Icon from "@/components/Icon";
 import { Card, Chip, EmptyState, PageHeader } from "@/components/ui";
 import { deleteFileAction } from "@/lib/actions";
-import { atLeast, requireUser } from "@/lib/auth";
+import { atLeast } from "@/lib/auth";
 import { all } from "@/lib/db";
 import { ENTITIES, type EntityKey } from "@/lib/entities";
 import { fileSize, timeAgo } from "@/lib/format";
 import { fileLinks, listAllFiles } from "@/lib/files";
+import { requireSection } from "@/lib/permissions";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +18,7 @@ export default async function FilesPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const user = await requireUser();
+  const user = await requireSection("files", "staff");
   const query = await searchParams;
   const search = typeof query.q === "string" ? query.q : undefined;
   const category = typeof query.category === "string" ? query.category : undefined;
@@ -39,10 +41,10 @@ export default async function FilesPage({
 
       <div className="grid lg:grid-cols-3 gap-5 items-start">
         <div className="lg:col-span-2 space-y-4">
-          <form method="get" className="flex flex-wrap gap-2">
+          <AutoSubmitForm className="flex flex-wrap gap-2">
             <div className="relative flex-1 min-w-[220px]">
               <Icon name="search" className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input name="q" defaultValue={search ?? ""} className="input input-icon" placeholder="Search files…" />
+              <input name="q" type="text" defaultValue={search ?? ""} className="input input-icon" placeholder="Search files…" />
             </div>
             <select name="category" defaultValue={category ?? ""} className="select w-auto min-w-[160px]">
               <option value="">All categories</option>
@@ -52,8 +54,7 @@ export default async function FilesPage({
                 </option>
               ))}
             </select>
-            <button className="btn">Apply</button>
-          </form>
+          </AutoSubmitForm>
 
           <Card title={`${files.length} ${files.length === 1 ? "file" : "files"}`} dense>
             {files.length === 0 ? (

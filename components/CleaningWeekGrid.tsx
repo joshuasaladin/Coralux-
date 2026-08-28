@@ -24,9 +24,11 @@ function dayNum(iso: string): number {
 export default function CleaningWeekGrid({
   week,
   initialShifts,
+  todayIso,
 }: {
   week: CleaningWeek;
   initialShifts: Record<string, any>[];
+  todayIso: string;
 }) {
   const [shifts, setShifts] = useState<ShiftMap>(() => {
     const map: ShiftMap = {};
@@ -39,15 +41,22 @@ export default function CleaningWeekGrid({
 
   return (
     <div className="scroll-x">
-      <table className="table" style={{ tableLayout: "fixed" }}>
+      <table className="table cleaning-grid" style={{ tableLayout: "fixed" }}>
+        <colgroup>
+          <col style={{ width: 68 }} />
+          {week.days.map((iso) => (
+            <col key={iso} style={{ width: 104 }} />
+          ))}
+        </colgroup>
         <thead>
           <tr>
-            <th style={{ width: 84 }}>Time</th>
+            <th>Time</th>
             {week.days.map((iso, i) => (
               <th
                 key={iso}
                 style={{
-                  background: i === 0 ? "var(--info-bg)" : i === 6 ? "var(--good-bg)" : undefined,
+                  background: iso === todayIso ? "var(--good-bg)" : undefined,
+                  color: iso === todayIso ? "var(--good-fg)" : undefined,
                 }}
               >
                 {DAY_LABELS[i]} <span className="tabular-nums font-normal">{dayNum(iso)}</span>

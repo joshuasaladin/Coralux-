@@ -551,6 +551,7 @@ export const ENTITIES: Record<EntityKey, Entity> = {
     blurb: "The team directory. Pay, ID numbers and permits are visible to admins only.",
     titleField: "name",
     subtitleField: "position",
+    minRole: "admin",
     defaultSort: "name ASC",
     searchFields: ["name", "position", "department", "email"],
     fields: [
@@ -1020,7 +1021,7 @@ export function optionTone(field: Field, value: unknown): Tone {
  *   plus the pages "/files" and "/reports".
  * ---------------------------------------------------------------------------
  */
-export const ENABLED_SECTIONS: EntityKey[] = ["tasks", "ideas", "vendors", "events", "inventory"];
+export const ENABLED_SECTIONS: EntityKey[] = ["tasks", "ideas", "vendors", "events", "inventory", "employees"];
 
 /** Custom screens (not backed by a single entity) that are switched on. */
 export const ENABLED_PAGES: string[] = ["/", "/calendar", "/admin", "/listings", "/cleaning"];
@@ -1036,7 +1037,7 @@ export function isPageEnabled(href: string): boolean {
 type NavItem = { href: string; label: string; icon: string; minRole?: Role; entity?: EntityKey };
 
 /** Every section the app can show. Filtered to the enabled ones by NAV below. */
-const ALL_NAV: { group: string; items: NavItem[] }[] = [
+export const ALL_NAV: { group: string; items: NavItem[] }[] = [
   {
     group: "Overview",
     items: [
@@ -1068,9 +1069,9 @@ const ALL_NAV: { group: string; items: NavItem[] }[] = [
   {
     group: "People",
     items: [
-      { href: "/employees", label: "Employees", icon: "users", entity: "employees" },
       { href: "/timeoff", label: "Time off", icon: "sun", entity: "timeoff", minRole: "manager" },
       { href: "/vendors", label: "Vendors", icon: "wrench", entity: "vendors" },
+      { href: "/employees", label: "Employees", icon: "users", entity: "employees", minRole: "admin" },
       { href: "/contacts", label: "Contacts", icon: "phone", entity: "contacts" },
     ],
   },
@@ -1104,3 +1105,23 @@ export const NAV = ALL_NAV.map((group) => ({
     item.entity ? isEnabled(item.entity) : isPageEnabled(item.href),
   ),
 })).filter((group) => group.items.length > 0);
+
+/**
+ * Every section that can have its own minimum role, for the Admin "who can
+ * access what" editor. Dashboard, Calendar and Admin itself stay fixed —
+ * always open to any signed-in user (Admin always requires admin+) — so
+ * nobody can accidentally lock everyone out of the app or the settings that
+ * would fix it.
+ */
+export type PermissionSection = { key: string; label: string; group: string; defaultRole: Role };
+
+export const PERMISSION_SECTIONS: PermissionSection[] = ALL_NAV.flatMap((group) =>
+  group.items
+    .filter((item) => item.href !== "/" && item.href !== "/calendar" && item.href !== "/admin")
+    .map((item) => ({
+      key: item.entity ?? item.href.replace(/^\//, ""),
+      label: item.label,
+      group: group.group,
+      defaultRole: item.minRole ?? ("staff" as Role),
+    })),
+);

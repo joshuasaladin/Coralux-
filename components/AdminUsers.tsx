@@ -79,22 +79,35 @@ export function UserRowControls({ user, isSelf }: { user: UserRow; isSelf: boole
 
   return (
     <>
-      <form action={updateUserAction} className="flex items-center gap-2">
+      <form
+        action={updateUserAction}
+        className="flex items-center gap-2"
+        onChange={(e) => e.currentTarget.requestSubmit()}
+      >
         <input type="hidden" name="user_id" value={user.id} />
-        <select name="role" defaultValue={user.role} className="select w-auto btn-sm" disabled={isSelf}>
+        <select
+          name="role"
+          defaultValue={user.role}
+          className="select w-auto btn-sm"
+          disabled={isSelf}
+          title={isSelf ? "You cannot change your own role" : "Role"}
+        >
           {ROLES.map((r) => (
             <option key={r.value} value={r.value}>
               {r.label}
             </option>
           ))}
         </select>
-        <select name="status" defaultValue={user.status} className="select w-auto btn-sm" disabled={isSelf}>
+        <select
+          name="status"
+          defaultValue={user.status}
+          className="select w-auto btn-sm"
+          disabled={isSelf}
+          title={isSelf ? "You cannot change your own status" : "Status"}
+        >
           <option value="active">Active</option>
           <option value="disabled">Disabled</option>
         </select>
-        <button className="btn btn-sm" disabled={isSelf} title={isSelf ? "You cannot change your own role" : "Save"}>
-          Save
-        </button>
       </form>
 
       <button className="btn btn-sm btn-ghost" onClick={() => setResetting((v) => !v)}>

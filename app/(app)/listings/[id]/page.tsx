@@ -5,10 +5,11 @@ import FilesPanel from "@/components/FilesPanel";
 import ListingChecklist from "@/components/ListingChecklist";
 import NotesPanel from "@/components/NotesPanel";
 import { Card, Chip, Detail, Lines, PageHeader } from "@/components/ui";
-import { atLeast, requireUser } from "@/lib/auth";
+import { atLeast } from "@/lib/auth";
 import { formatDate, relativeDay, timeAgo } from "@/lib/format";
 import { listActivity, listFilesFor, listNotes } from "@/lib/records";
 import { getListing, listSteps, platformLabel, statusLabel, statusTone, stepProgress } from "@/lib/listings";
+import { requireSection } from "@/lib/permissions";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +18,7 @@ export default async function ListingDetailPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const user = await requireUser();
+  const user = await requireSection("listings", "staff");
   const { id } = await params;
   const listing = getListing(id);
   if (!listing) notFound();

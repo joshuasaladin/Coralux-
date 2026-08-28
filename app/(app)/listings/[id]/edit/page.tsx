@@ -1,8 +1,8 @@
 import { notFound } from "next/navigation";
 import ListingForm from "@/components/ListingForm";
 import { PageHeader } from "@/components/ui";
-import { requireUser } from "@/lib/auth";
 import { getListing } from "@/lib/listings";
+import { requireSection } from "@/lib/permissions";
 
 export const dynamic = "force-dynamic";
 
@@ -11,7 +11,7 @@ export default async function EditListingPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  await requireUser();
+  await requireSection("listings", "staff");
   const { id } = await params;
   const listing = getListing(id);
   if (!listing) notFound();

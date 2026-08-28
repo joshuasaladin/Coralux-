@@ -439,6 +439,150 @@ await step("month navigation works", async () => {
   await page.click('a[href*="month="]:nth-of-type(2)').catch(() => {});
 });
 
+// ------------------------------------------------------ current-day highlight
+await step("cleaning grid highlights only today, not a static Sun/Sat", async () => {
+  await page.goto(`${base}/cleaning`);
+  await page.waitForSelector("text=current");
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const todayDow = new Date().getDay(); // 0=Sun..6=Sat
+
+  const currentDetails = page.locator("details", { has: page.locator("text=current") }).first();
+  const headers = currentDetails.locator("table thead th");
+  const count = await headers.count();
+  if (count !== 8) throw new Error(`expected 8 header cells (Time + 7 days), got ${count}`);
+
+  for (let i = 1; i < count; i++) {
+    const bg = await headers.nth(i).evaluate((el) => getComputedStyle(el).backgroundColor);
+    const isHighlighted = bg !== "rgba(0, 0, 0, 0)" && bg !== "transparent";
+    const dayOfWeek = i - 1; // 0=Sun..6=Sat matches DAY_LABELS order
+    if (dayOfWeek === todayDow && !isHighlighted) {
+      throw new Error(`today's column (day ${dayOfWeek}) should be highlighted, was not`);
+    }
+    if (dayOfWeek !== todayDow && isHighlighted) {
+      throw new Error(`day ${dayOfWeek} should not be highlighted (only today, ${todayDow}, should be) — got bg ${bg}`);
+    }
+  }
+});
+
+// ------------------------------------------------------------- mobile layout
+await step("cleaning grid does not overlap columns on a phone-width viewport", async () => {
+  const mobile = await browser.newContext({ viewport: { width: 375, height: 812 } });
+  const mp = await mobile.newPage();
+  await mp.goto(`${base}/login`);
+  await mp.fill('input[name="email"]', "admin@coralux.aw");
+  await mp.fill('input[name="password"]', "coralux2026");
+  await mp.click('button[type="submit"]');
+  await mp.waitForURL(`${base}/`, { timeout: 15000 });
+  await mp.goto(`${base}/cleaning`);
+  await mp.waitForSelector("text=current");
+
+  const currentDetails = mp.locator("details", { has: mp.locator("text=current") }).first();
+  const headers = currentDetails.locator("table thead th");
+  const boxes = [];
+  const n = await headers.count();
+  for (let i = 0; i < n; i++) {
+    boxes.push(await headers.nth(i).boundingBox());
+  }
+  for (let i = 1; i < boxes.length; i++) {
+    const prev = boxes[i - 1];
+    const cur = boxes[i];
+    if (!prev || !cur) throw new Error("a header cell has no bounding box (hidden/collapsed?)");
+    if (cur.x < prev.x + prev.width - 1) {
+      throw new Error(`header ${i} overlaps header ${i - 1}: prev ends at ${prev.x + prev.width}, cur starts at ${cur.x}`);
+    }
+  }
+  await mp.screenshot({ path: `${out}/70-cleaning-mobile.png`, fullPage: true });
+  await mobile.close();
+});
+
+// ------------------------------------------------------------- no Apply button
+await step("no Apply/View button anywhere — filters and selects auto-apply", async () => {
+  const pages = ["/tasks", "/ideas", "/vendors", "/inventory", "/files", "/reports"];
+  for (const path of pages) {
+    await page.goto(`${base}${path}`);
+    const applyBtn = await page.locator('button:has-text("Apply"), button:has-text("View")').count();
+    if (applyBtn > 0) throw new Error(`found an Apply/View button on ${path}`);
+  }
+});
+
+await step("inventory filters auto-apply without a submit click", async () => {
+  await page.goto(`${base}/inventory`);
+  const select = page.locator("form select").first();
+  const value = await select.evaluate((el) => el.options[1]?.value);
+  if (value) {
+    await select.selectOption(value);
+    await page.waitForURL((u) => u.search.length > 0, { timeout: 5000 });
+  }
+});
+
+// ------------------------------------------------------------------ employees
+await step("employees: hidden from staff nav and blocked directly", async () => {
+  const staff = await browser.newContext();
+  const sp = await staff.newPage();
+  await sp.goto(`${base}/login`);
+  await sp.fill('input[name="email"]', "dwight@coralux.aw");
+  await sp.fill('input[name="password"]', "coralux2026");
+  await sp.click('button[type="submit"]');
+  await sp.waitForURL(`${base}/`, { timeout: 15000 });
+
+  const navHasEmployees = await sp.locator('a:has-text("Employees")').count();
+  if (navHasEmployees > 0) throw new Error("staff should not see Employees in the nav");
+
+  const res = await sp.goto(`${base}/employees`);
+  if (res.status() !== 404) throw new Error(`staff should be 404'd from /employees, got ${res.status()}`);
+  await staff.close();
+});
+
+await step("employees: visible and accessible to admin, positioned under Vendors", async () => {
+  await page.goto(`${base}/`);
+  const navText = await page.locator("nav").first().innerText();
+  const vendorsIdx = navText.indexOf("Vendors");
+  const employeesIdx = navText.indexOf("Employees");
+  if (vendorsIdx === -1 || employeesIdx === -1) throw new Error("Vendors/Employees not found in nav");
+  if (employeesIdx < vendorsIdx) throw new Error("Employees should be listed below Vendors in the People group");
+
+  await page.goto(`${base}/employees`);
+  await page.waitForSelector("text=Dwight Tromp");
+});
+await page.screenshot({ path: `${out}/71-employees.png`, fullPage: true });
+
+// -------------------------------------------------------- admin access control
+await step("admin: access control editor changes a section's required role live", async () => {
+  await page.goto(`${base}/admin`);
+  await page.waitForSelector("text=Access control");
+  const select = page.locator('select[aria-label="Vendors"]');
+  await select.selectOption("admin");
+  await page.waitForTimeout(800);
+
+  const staff = await browser.newContext();
+  const sp = await staff.newPage();
+  await sp.goto(`${base}/login`);
+  await sp.fill('input[name="email"]', "dwight@coralux.aw");
+  await sp.fill('input[name="password"]', "coralux2026");
+  await sp.click('button[type="submit"]');
+  await sp.waitForURL(`${base}/`, { timeout: 15000 });
+  const res = await sp.goto(`${base}/vendors`);
+  if (res.status() !== 404) throw new Error(`staff should be blocked from Vendors once overridden to admin, got ${res.status()}`);
+  await staff.close();
+
+  // restore, so the rest of the suite (and the app) is left in its default state
+  await select.selectOption("staff");
+  await page.waitForTimeout(800);
+});
+await page.screenshot({ path: `${out}/72-admin-access-control.png`, fullPage: true });
+
+await step("admin: access control override reverted successfully", async () => {
+  const staff = await browser.newContext();
+  const sp = await staff.newPage();
+  await sp.goto(`${base}/login`);
+  await sp.fill('input[name="email"]', "dwight@coralux.aw");
+  await sp.fill('input[name="password"]', "coralux2026");
+  await sp.click('button[type="submit"]');
+  await sp.waitForURL(`${base}/`, { timeout: 15000 });
+  const res = await sp.goto(`${base}/vendors`);
+  if (res.status() === 404) throw new Error("vendors override was not reverted — staff still blocked");
+  await staff.close();
+});
 
 if (errors.length) {
   console.log("\nBrowser errors:");

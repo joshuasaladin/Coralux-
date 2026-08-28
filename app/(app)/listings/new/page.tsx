@@ -1,11 +1,11 @@
 import ListingForm from "@/components/ListingForm";
 import { PageHeader } from "@/components/ui";
-import { requireUser } from "@/lib/auth";
+import { requireSection } from "@/lib/permissions";
 
 export const dynamic = "force-dynamic";
 
 export default async function NewListingPage() {
-  await requireUser();
+  await requireSection("listings", "staff");
 
   return (
     <div className="max-w-3xl">

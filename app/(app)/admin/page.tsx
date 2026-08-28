@@ -1,10 +1,12 @@
 import { notFound } from "next/navigation";
+import AccessControl from "@/components/AccessControl";
 import { NewUserForm, UserRowControls } from "@/components/AdminUsers";
 import { Card, Chip, PageHeader } from "@/components/ui";
 import { atLeast, listUsers, requireUser } from "@/lib/auth";
 import { all, one } from "@/lib/db";
 import { ENTITIES, ENTITY_KEYS } from "@/lib/entities";
 import { formatDate } from "@/lib/format";
+import { getRoleOverrides, PERMISSION_SECTIONS } from "@/lib/permissions";
 import { refOptions } from "@/lib/records";
 import { ROLES } from "@/lib/roles";
 
@@ -16,6 +18,7 @@ export default async function AdminPage() {
 
   const users = listUsers();
   const employees = refOptions("employees");
+  const roleOverrides = getRoleOverrides();
 
   const counts = ENTITY_KEYS.map((key) => {
     const entity = ENTITIES[key];
@@ -98,6 +101,12 @@ export default async function AdminPage() {
             Salary, ID and permit fields on an employee record, and any file marked confidential,
             are only ever shown to admins and owners — including in search results.
           </p>
+        </Card>
+
+        <Card title="Access control" dense>
+          <div className="p-4">
+            <AccessControl sections={PERMISSION_SECTIONS} overrides={roleOverrides} />
+          </div>
         </Card>
 
         <div className="grid lg:grid-cols-2 gap-5">

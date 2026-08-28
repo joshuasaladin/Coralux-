@@ -8,6 +8,7 @@ import {
   isEnabled,
 } from "./entities";
 import { atLeast, type Role, type User } from "./auth";
+import { effectiveMinRole } from "./permissions";
 
 export type Row = Record<string, any>;
 
@@ -29,7 +30,8 @@ export function visibleFields(entity: Entity, role: Role): Field[] {
 
 export function canOpen(entity: Entity, role: Role): boolean {
   if (!isEnabled(entity.key)) return false;
-  return !entity.minRole || atLeast(role, entity.minRole);
+  const min = effectiveMinRole(entity.key, entity.minRole ?? "staff");
+  return atLeast(role, min);
 }
 
 /** Coerce a submitted form value into what SQLite should store. */

@@ -1,13 +1,13 @@
 import Link from "next/link";
+import AutoSubmitForm from "@/components/AutoSubmitForm";
 import { Card, PageHeader } from "@/components/ui";
-import { notFound } from "next/navigation";
-import { atLeast, requireUser } from "@/lib/auth";
 import {
   availableYears,
   spendByCategory,
   spendByMonth,
   spendByVendor,
 } from "@/lib/dashboard";
+import { requireSection } from "@/lib/permissions";
 import { compactMoney, money, titleCase } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -17,8 +17,7 @@ export default async function ReportsPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const user = await requireUser();
-  if (!atLeast(user.role, "manager")) notFound();
+  await requireSection("reports", "manager");
 
   const query = await searchParams;
   const years = availableYears();
@@ -39,7 +38,7 @@ export default async function ReportsPage({
         title={`Spend in ${year}`}
         blurb="What the company actually spent, by month, by category and by vendor. Built from the invoice records — nothing typed twice."
         actions={
-          <form method="get">
+          <AutoSubmitForm>
             <select name="year" defaultValue={String(year)} className="select w-auto">
               {years.map((y) => (
                 <option key={y} value={y}>
@@ -47,9 +46,7 @@ export default async function ReportsPage({
                 </option>
               ))}
             </select>
-            <noscript />
-            <button className="btn ml-2">View</button>
-          </form>
+          </AutoSubmitForm>
         }
       />
 

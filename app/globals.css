@@ -171,6 +171,10 @@ body {
 .table td.primary { color: var(--ink); font-weight: 550; }
 
 .scroll-x { overflow-x: auto; }
+/* the fixed table-layout otherwise squeezes columns to fit 100% width
+   instead of letting the container scroll — this is what actually makes
+   the horizontal scroll kick in on narrow screens. */
+.cleaning-grid { width: auto; min-width: 800px; }
 .scroll-x::-webkit-scrollbar { height: 8px; }
 .scroll-x::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: 99px; }
 

@@ -2,8 +2,8 @@ import Link from "next/link";
 import CleaningWeekGrid from "@/components/CleaningWeekGrid";
 import Icon from "@/components/Icon";
 import { PageHeader } from "@/components/ui";
-import { requireUser } from "@/lib/auth";
 import { listShiftsForWeeks, weeksForMonth } from "@/lib/cleaning";
+import { requireSection } from "@/lib/permissions";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +12,7 @@ export default async function CleaningSchedulePage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  await requireUser();
+  await requireSection("cleaning", "staff");
   const query = await searchParams;
 
   const today = new Date();
@@ -69,7 +69,7 @@ export default async function CleaningSchedulePage({
                 {isPast && <span className="chip chip-muted">past</span>}
                 {!isPast && week.start <= todayIso && <span className="chip chip-info">current</span>}
               </summary>
-              <CleaningWeekGrid week={week} initialShifts={shiftsByWeek.get(week.start) ?? []} />
+              <CleaningWeekGrid week={week} initialShifts={shiftsByWeek.get(week.start) ?? []} todayIso={todayIso} />
             </details>
           );
         })}

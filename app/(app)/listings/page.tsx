@@ -1,14 +1,14 @@
 import Link from "next/link";
 import Icon from "@/components/Icon";
 import { Chip, EmptyState, PageHeader } from "@/components/ui";
-import { requireUser } from "@/lib/auth";
 import { formatDate, relativeDay } from "@/lib/format";
 import { listListings, platformLabel, statusLabel, statusTone } from "@/lib/listings";
+import { requireSection } from "@/lib/permissions";
 
 export const dynamic = "force-dynamic";
 
 export default async function ListingsPage() {
-  await requireUser();
+  await requireSection("listings", "staff");
   const listings = listListings();
 
   const inProgress = listings.filter((l) => l.status === "in_progress");

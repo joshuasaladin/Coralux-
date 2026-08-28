@@ -432,3 +432,13 @@ CREATE TABLE IF NOT EXISTS cleaning_shifts (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_cleaning_shift_cell
   ON cleaning_shifts(week_start, day_of_week, time_slot);
 CREATE INDEX IF NOT EXISTS idx_cleaning_shifts_week ON cleaning_shifts(week_start);
+
+-- ------------------------------------------------- per-section role overrides
+
+-- Which minimum role a section requires, when an admin has changed it away
+-- from the code default in lib/entities.ts (PERMISSION_SECTIONS). A section
+-- with no row here just uses its default.
+CREATE TABLE IF NOT EXISTS role_overrides (
+  section_key TEXT PRIMARY KEY,
+  min_role    TEXT NOT NULL -- staff | manager | admin | owner
+);
