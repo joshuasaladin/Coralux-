@@ -577,8 +577,13 @@ await step("admin: access control editor changes a section's required role live"
   await sp.click('button[type="submit"]');
   await sp.waitForURL(`${base}/`, { timeout: 15000 });
 
-  const navHasVendors = await sp.locator('a:has-text("Vendors")').count();
+  const navHasVendors = await sp.locator('nav a:has-text("Vendors")').count();
   if (navHasVendors > 0) throw new Error("staff should not see Vendors in the nav once overridden to admin");
+
+  // the dashboard links into every section too, so it must hide the locked
+  // one rather than keep showing its record count
+  const dashHasVendors = await sp.locator('a[href="/vendors"]').count();
+  if (dashHasVendors > 0) throw new Error("the dashboard still links to Vendors after it was locked to admin");
 
   await sp.goto(`${base}/vendors`);
   await sp.waitForSelector("text=Not available to your account");

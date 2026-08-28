@@ -3,7 +3,7 @@ import Icon from "@/components/Icon";
 import { Card, Chip, EmptyState, StatCard } from "@/components/ui";
 import { requireUser } from "@/lib/auth";
 import { all } from "@/lib/db";
-import { isEnabled, isPageEnabled } from "@/lib/entities";
+import { canSeeSection, sectionKeyFromHref } from "@/lib/permissions";
 import {
   attentionItems,
   dashboardSummary,
@@ -18,14 +18,23 @@ export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
   const user = await requireUser();
+
+  // The dashboard links into every section, so it has to respect the same
+  // access rules the nav does — otherwise a section an admin has locked down
+  // still shows its counts and record titles here.
+  const canSee = (key: string) => canSeeSection(user.role, key);
+  const canFollow = (href: string) => canSee(sectionKeyFromHref(href));
+
   const s = dashboardSummary(user.role);
-  const attention = attentionItems(user.role);
-  const agenda = upcomingAgenda(21).slice(0, 10);
-  const activity = recentActivity(8);
+  const attention = attentionItems(user.role).filter((i) => canFollow(i.href));
+  const agenda = upcomingAgenda(21).filter((i) => canFollow(i.href)).slice(0, 10);
+  const activity = recentActivity(8).filter((e) => canSee(String(e.entity)));
   const files = recentFiles(5);
-  const ideas = all<Record<string, any>>(
-    `SELECT * FROM ideas WHERE status IN ('new', 'exploring') ORDER BY created_at DESC LIMIT 4`,
-  );
+  const ideas = canSee("ideas")
+    ? all<Record<string, any>>(
+        `SELECT * FROM ideas WHERE status IN ('new', 'exploring') ORDER BY created_at DESC LIMIT 4`,
+      )
+    : [];
 
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
@@ -70,57 +79,65 @@ export default async function DashboardPage() {
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
-        <StatCard
-          label="To do"
-          value={String(s.openTasks)}
-          sub={s.overdueTasks > 0 ? `${s.overdueTasks} overdue` : "nothing overdue"}
-          tone={s.overdueTasks > 0 ? "bad" : "good"}
-          icon="check"
-          href="/tasks?status=todo"
-        />
-        <StatCard
-          label="Upcoming"
-          value={String(s.upcomingEvents)}
-          sub="in the next 14 days"
-          tone="info"
-          icon="calendar"
-          href="/calendar"
-        />
-        <StatCard
-          label="Vendors"
-          value={String(s.activeVendors)}
-          sub="active suppliers"
-          tone="neutral"
-          icon="wrench"
-          href="/vendors"
-        />
-        <StatCard
-          label="Ideas"
-          value={String(s.newIdeas)}
-          sub="new or being explored"
-          tone="neutral"
-          icon="bulb"
-          href="/ideas"
-        />
-        {s.seesMoney && (
-          <>
-            <StatCard
-              label="Payments due"
-              value={compactMoney(s.outstandingTotal)}
-              sub={`${s.outstandingCount} open ${s.outstandingCount === 1 ? "invoice" : "invoices"}`}
-              tone={s.outstandingTotal > 0 ? "warn" : "good"}
-              icon="card"
-              href="/invoices?status=unpaid"
-            />
-            <StatCard
-              label="Payouts scheduled"
-              value={compactMoney(s.scheduledPayoutTotal)}
-              sub={`${s.scheduledPayoutCount} to release`}
-              tone="info"
-              icon="bank"
-              href="/payouts?status=scheduled"
-            />
-          </>
+        {canSee("tasks") && (
+          <StatCard
+            label="To do"
+            value={String(s.openTasks)}
+            sub={s.overdueTasks > 0 ? `${s.overdueTasks} overdue` : "nothing overdue"}
+            tone={s.overdueTasks > 0 ? "bad" : "good"}
+            icon="check"
+            href="/tasks?status=todo"
+          />
+        )}
+        {canSee("calendar") && (
+          <StatCard
+            label="Upcoming"
+            value={String(s.upcomingEvents)}
+            sub="in the next 14 days"
+            tone="info"
+            icon="calendar"
+            href="/calendar"
+          />
+        )}
+        {canSee("vendors") && (
+          <StatCard
+            label="Vendors"
+            value={String(s.activeVendors)}
+            sub="active suppliers"
+            tone="neutral"
+            icon="wrench"
+            href="/vendors"
+          />
+        )}
+        {canSee("ideas") && (
+          <StatCard
+            label="Ideas"
+            value={String(s.newIdeas)}
+            sub="new or being explored"
+            tone="neutral"
+            icon="bulb"
+            href="/ideas"
+          />
+        )}
+        {s.seesMoney && canSee("invoices") && (
+          <StatCard
+            label="Payments due"
+            value={compactMoney(s.outstandingTotal)}
+            sub={`${s.outstandingCount} open ${s.outstandingCount === 1 ? "invoice" : "invoices"}`}
+            tone={s.outstandingTotal > 0 ? "warn" : "good"}
+            icon="card"
+            href="/invoices?status=unpaid"
+          />
+        )}
+        {s.seesMoney && canSee("payouts") && (
+          <StatCard
+            label="Payouts scheduled"
+            value={compactMoney(s.scheduledPayoutTotal)}
+            sub={`${s.scheduledPayoutCount} to release`}
+            tone="info"
+            icon="bank"
+            href="/payouts?status=scheduled"
+          />
         )}
       </div>
 
@@ -208,19 +225,20 @@ export default async function DashboardPage() {
         </div>
 
         <div className="space-y-5">
-          {(isEnabled("timeoff") || isEnabled("requests")) && (
+          {(canSee("timeoff") || canSee("requests")) && (
             <Card title="Employee items" action={<span className="chip chip-info">{s.employeeItems}</span>}>
               <div className="space-y-2 text-sm">
-                {isEnabled("timeoff") && (
+                {canSee("timeoff") && (
                   <Row href="/timeoff?status=requested" label="Time-off requests" value={s.pendingTimeOff} />
                 )}
-                {isEnabled("requests") && (
+                {canSee("requests") && (
                   <Row href="/requests?status=submitted" label="Purchase requests" value={s.openRequests} />
                 )}
               </div>
             </Card>
           )}
 
+          {canSee("ideas") && (
           <Card
             title="Ideas"
             action={
@@ -250,8 +268,9 @@ export default async function DashboardPage() {
               </ul>
             )}
           </Card>
+          )}
 
-          {isPageEnabled("/files") && (
+          {canSee("files") && (
           <Card
             title="Recent files"
             action={
