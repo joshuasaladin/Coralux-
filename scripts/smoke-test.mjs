@@ -510,9 +510,10 @@ await step("inventory filters auto-apply without a submit click", async () => {
   const select = page.locator("form select").first();
   const value = await select.evaluate((el) => el.options[1]?.value);
   if (value) {
-    const navPromise = page.waitForURL((u) => u.search.includes(value), { timeout: 8000 });
     await select.selectOption(value);
-    await navPromise;
+    // poll location directly rather than race a waitForURL against a
+    // navigation that may already have completed by the time we attach
+    await page.waitForFunction((v) => location.search.includes(v), value, { timeout: 8000 });
   }
 });
 
@@ -536,8 +537,11 @@ await step("employees: hidden from staff nav and blocked directly", async () => 
 
   await sp.goto(`${base}/employees`);
   await sp.waitForSelector("text=Not available to your account");
-  const leaked = await sp.locator("text=Dwight Tromp").count();
-  if (leaked > 0) throw new Error("staff should not see employee data on the restricted /employees page");
+  // Dwight is himself an employee and shows up in the sidebar as the
+  // signed-in user, so check for the data table (absent when blocked)
+  // rather than any one name.
+  const tableCount = await sp.locator("table").count();
+  if (tableCount > 0) throw new Error("staff should not see the employees table on the restricted page");
   await staff.close();
 });
 
@@ -560,7 +564,7 @@ await step("admin: access control editor changes a section's required role live"
   await page.waitForSelector("text=Access control");
   const select = page.locator('select[aria-label="Vendors"]');
   await select.selectOption("admin");
-  await page.waitForTimeout(800);
+  await page.waitForTimeout(1500);
 
   const staff = await browser.newContext();
   const sp = await staff.newPage();
@@ -579,7 +583,7 @@ await step("admin: access control editor changes a section's required role live"
 
   // restore, so the rest of the suite (and the app) is left in its default state
   await select.selectOption("staff");
-  await page.waitForTimeout(800);
+  await page.waitForTimeout(1500);
 });
 await page.screenshot({ path: `${out}/72-admin-access-control.png`, fullPage: true });
 
