@@ -510,12 +510,18 @@ await step("inventory filters auto-apply without a submit click", async () => {
   const select = page.locator("form select").first();
   const value = await select.evaluate((el) => el.options[1]?.value);
   if (value) {
+    const navPromise = page.waitForURL((u) => u.search.includes(value), { timeout: 8000 });
     await select.selectOption(value);
-    await page.waitForURL((u) => u.search.length > 0, { timeout: 5000 });
+    await navPromise;
   }
 });
 
 // ------------------------------------------------------------------ employees
+//
+// Entity-registry sections (like /employees, /vendors) render their own 200
+// "not available to your account" panel rather than 404ing — that's the
+// existing pattern (see "disabled section shows the switch-on notice" above).
+// Custom pages (requireSection) 404 instead; that's covered separately below.
 await step("employees: hidden from staff nav and blocked directly", async () => {
   const staff = await browser.newContext();
   const sp = await staff.newPage();
@@ -528,8 +534,10 @@ await step("employees: hidden from staff nav and blocked directly", async () => 
   const navHasEmployees = await sp.locator('a:has-text("Employees")').count();
   if (navHasEmployees > 0) throw new Error("staff should not see Employees in the nav");
 
-  const res = await sp.goto(`${base}/employees`);
-  if (res.status() !== 404) throw new Error(`staff should be 404'd from /employees, got ${res.status()}`);
+  await sp.goto(`${base}/employees`);
+  await sp.waitForSelector("text=Not available to your account");
+  const leaked = await sp.locator("text=Dwight Tromp").count();
+  if (leaked > 0) throw new Error("staff should not see employee data on the restricted /employees page");
   await staff.close();
 });
 
@@ -561,8 +569,12 @@ await step("admin: access control editor changes a section's required role live"
   await sp.fill('input[name="password"]', "coralux2026");
   await sp.click('button[type="submit"]');
   await sp.waitForURL(`${base}/`, { timeout: 15000 });
-  const res = await sp.goto(`${base}/vendors`);
-  if (res.status() !== 404) throw new Error(`staff should be blocked from Vendors once overridden to admin, got ${res.status()}`);
+
+  const navHasVendors = await sp.locator('a:has-text("Vendors")').count();
+  if (navHasVendors > 0) throw new Error("staff should not see Vendors in the nav once overridden to admin");
+
+  await sp.goto(`${base}/vendors`);
+  await sp.waitForSelector("text=Not available to your account");
   await staff.close();
 
   // restore, so the rest of the suite (and the app) is left in its default state
@@ -579,8 +591,8 @@ await step("admin: access control override reverted successfully", async () => {
   await sp.fill('input[name="password"]', "coralux2026");
   await sp.click('button[type="submit"]');
   await sp.waitForURL(`${base}/`, { timeout: 15000 });
-  const res = await sp.goto(`${base}/vendors`);
-  if (res.status() === 404) throw new Error("vendors override was not reverted — staff still blocked");
+  const navHasVendors = await sp.locator('a:has-text("Vendors")').count();
+  if (navHasVendors === 0) throw new Error("vendors override was not reverted — staff still cannot see Vendors in the nav");
   await staff.close();
 });
 
