@@ -399,3 +399,36 @@ CREATE TABLE IF NOT EXISTS listing_steps (
 );
 
 CREATE INDEX IF NOT EXISTS idx_listing_steps_listing ON listing_steps(listing_id);
+
+-- ------------------------------------------------------------- inventory
+
+CREATE TABLE IF NOT EXISTS inventory (
+  id          TEXT PRIMARY KEY,
+  name        TEXT NOT NULL,
+  category    TEXT,
+  quantity    REAL NOT NULL DEFAULT 0,
+  unit        TEXT,
+  par_level   REAL,
+  location    TEXT,
+  status      TEXT NOT NULL DEFAULT 'in_stock', -- in_stock | low | out | discontinued
+  notes       TEXT,
+  created_at  TEXT NOT NULL,
+  updated_at  TEXT NOT NULL
+);
+
+-- --------------------------------------------------------- cleaning schedule
+
+CREATE TABLE IF NOT EXISTS cleaning_shifts (
+  id          TEXT PRIMARY KEY,
+  week_start  TEXT NOT NULL,    -- the Sunday that anchors the week, YYYY-MM-DD
+  day_of_week INTEGER NOT NULL, -- 0 = Sunday .. 6 = Saturday
+  time_slot   TEXT NOT NULL,    -- "07:00" .. "20:00"
+  listing     TEXT,
+  notes       TEXT,
+  created_at  TEXT NOT NULL,
+  updated_at  TEXT NOT NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_cleaning_shift_cell
+  ON cleaning_shifts(week_start, day_of_week, time_slot);
+CREATE INDEX IF NOT EXISTS idx_cleaning_shifts_week ON cleaning_shifts(week_start);

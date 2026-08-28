@@ -85,6 +85,28 @@ function Control({
     );
   }
 
+  if (field.type === "number" || field.type === "money") {
+    const commit = (e: React.SyntheticEvent<HTMLInputElement>) => {
+      e.currentTarget.form?.requestSubmit();
+    };
+    return (
+      <input
+        type="number"
+        name="value"
+        value={current}
+        onChange={(e) => setCurrent(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => e.key === "Enter" && commit(e)}
+        disabled={pending}
+        aria-label={field.label}
+        title={`${field.label} — click to change`}
+        className="input"
+        step={field.type === "money" ? "0.01" : "any"}
+        style={{ width: 90, padding: ".25rem .5rem", fontSize: ".8125rem", opacity: pending ? 0.5 : 1 }}
+      />
+    );
+  }
+
   // date
   return (
     <span className="inline-block">

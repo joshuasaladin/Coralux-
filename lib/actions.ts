@@ -29,6 +29,7 @@ import {
   toggleStep,
   updateListing,
 } from "./listings";
+import { clearShift, upsertShift } from "./cleaning";
 
 export type ActionState = { error?: string; ok?: string } | null;
 
@@ -448,4 +449,39 @@ export async function deleteListingStepAction(form: FormData) {
   deleteStep(stepId, user);
   revalidatePath(`/listings/${listingId}`);
   revalidatePath("/listings");
+}
+
+// ------------------------------------------------------------ cleaning grid
+//
+// Called directly from the grid's client component (not through a <form>) —
+// a plain RPC to a "use server" function is the natural fit for a table of
+// many small editable cells, where a <form>-per-cell would mean carrying a
+// hidden __week_start/__day/__slot input into every one of them.
+
+export async function saveCleaningShiftAction(
+  weekStart: string,
+  dayOfWeek: number,
+  timeSlot: string,
+  listing: string,
+  notes: string,
+): Promise<{ error?: string }> {
+  await requireUser();
+  try {
+    upsertShift(weekStart, dayOfWeek, timeSlot, listing, notes);
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Could not save." };
+  }
+  revalidatePath("/cleaning");
+  return {};
+}
+
+export async function clearCleaningShiftAction(
+  weekStart: string,
+  dayOfWeek: number,
+  timeSlot: string,
+): Promise<{ error?: string }> {
+  await requireUser();
+  clearShift(weekStart, dayOfWeek, timeSlot);
+  revalidatePath("/cleaning");
+  return {};
 }

@@ -534,6 +534,52 @@ export function seedIfEmpty(db: Database.Database) {
       ONBOARDING_STEPS.length,
     );
 
+    // ----------------------------------------------------------------- inventory
+    const inventoryItems: Array<Record<string, unknown>> = [
+      { name: "All-purpose cleaner", category: "cleaning_supplies", quantity: 18, unit: "bottles", par_level: 10, location: "Storage — Oranjestad office", status: "in_stock" },
+      { name: "Toilet paper", category: "paper_goods", quantity: 6, unit: "12-packs", par_level: 8, location: "Storage — Oranjestad office", status: "low" },
+      { name: "Glass cleaner", category: "cleaning_supplies", quantity: 0, unit: "bottles", par_level: 6, location: "Storage — Oranjestad office", status: "out" },
+      { name: "Queen bed sheets — white", category: "linens", quantity: 0, unit: "sets", par_level: 6, location: "Laundry room", status: "out", notes: "Reordered from Aruba Linen Co — arriving next week." },
+      { name: "Bath towels", category: "linens", quantity: 40, unit: "pieces", par_level: 20, location: "Laundry room", status: "in_stock" },
+      { name: "Welcome basket kits", category: "amenities", quantity: 3, unit: "kits", par_level: 5, location: "Storage — Oranjestad office", status: "low" },
+      { name: "Trash bags — large", category: "paper_goods", quantity: 12, unit: "rolls", par_level: 5, location: "Storage — Oranjestad office", status: "in_stock" },
+      { name: "Vacuum cleaner", category: "equipment", quantity: 4, unit: "units", par_level: null, location: "Split across properties", status: "in_stock" },
+    ];
+    for (const item of inventoryItems) {
+      insert("inventory", stamped({ id: uid(), unit: null, par_level: null, location: null, notes: null, ...item }));
+    }
+
+    // -------------------------------------------------------- cleaning schedule
+    const thisWeekStart = (() => {
+      const d = new Date();
+      d.setDate(d.getDate() - d.getDay());
+      return d.toISOString().slice(0, 10);
+    })();
+    const weekOffset = (weeks: number) => {
+      const d = new Date(`${thisWeekStart}T00:00:00`);
+      d.setDate(d.getDate() + weeks * 7);
+      return d.toISOString().slice(0, 10);
+    };
+    const shift = (weekStart: string, dayOfWeek: number, timeSlot: string, listing: string, notes: string | null = null) =>
+      insert("cleaning_shifts", stamped({ id: uid(), week_start: weekStart, day_of_week: dayOfWeek, time_slot: timeSlot, listing, notes }));
+
+    // last week — demonstrates the "past weeks collapse" behaviour
+    shift(weekOffset(-1), 1, "09:00", "Coral Bay");
+    shift(weekOffset(-1), 3, "10:00", "Malmok");
+
+    // this week
+    shift(weekOffset(0), 0, "11:00", "Coral Bay", "Turnover — guests arrive 4pm");
+    shift(weekOffset(0), 1, "09:00", "Eagle Beach", "6 guests — extra towels");
+    shift(weekOffset(0), 2, "10:00", "Malmok");
+    shift(weekOffset(0), 3, "08:00", "Noord");
+    shift(weekOffset(0), 4, "11:00", "Savaneta");
+    shift(weekOffset(0), 5, "14:00", "Oranjestad", "Key under the mat");
+    shift(weekOffset(0), 6, "09:00", "Eagle Beach");
+
+    // next week
+    shift(weekOffset(1), 2, "09:00", "Eagle Beach");
+    shift(weekOffset(1), 5, "11:00", "Noord");
+
     // ----------------------------------------------------------------- notes
     const note = (entity: string, entityId: string, body: string, pinned = 0) =>
       insert("notes", stamped({ id: uid(), entity, entity_id: entityId, body, author_id: owner, pinned }));

@@ -241,6 +241,8 @@ body {
 
 details > summary::-webkit-details-marker { display: none; }
 details > summary::marker { content: ""; }
+.details-chevron { transition: transform .15s ease; }
+details[open] > summary .details-chevron { transform: rotate(90deg); }
 
 /* tabs */
 .tab {

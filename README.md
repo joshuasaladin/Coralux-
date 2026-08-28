@@ -21,6 +21,8 @@ Phase one is switched on:
 | 💡 **Ideas** | Improvements, marketing and future projects, scored by impact and effort |
 | 🤝 **Vendors** | Pool, landscaping, electrical, plumbing and the rest — with their contacts, notes and documents |
 | 📋 **Listing Onboarding** | Every new property from first details collected to live on Airbnb/Guesty, tracked by a checklist |
+| ✨ **Cleaning Schedule** | A monthly, week-by-week grid — click any cell to assign a listing and notes for that time slot |
+| 📦 **Inventory** | Cleaning supplies, linens and amenities — quantity and status editable straight from the list |
 | 🔐 **Admin** | Who can sign in, what each role sees, and account management (create, edit role/status, reset password, delete) |
 
 Every record — a task, a vendor, an idea — carries its own **notes**,
@@ -267,3 +269,26 @@ off the last step and it goes Active on its own — the same pattern invoices
 use to follow their payments. Edit the default checklist for new listings in
 `DEFAULT_STEPS` (`lib/listings.ts`) and the matching copy in `lib/seed.ts`;
 existing listings keep whatever steps they already have.
+
+**Inventory** is a plain entity in `lib/entities.ts` (like Tasks or Vendors) —
+quantity and status are `editable: true`, so stock counts update straight from
+the list, and the default sort floats Out/Low items to the top
+(`status = 'out' DESC, status = 'low' DESC, name ASC`). Nothing custom here;
+it's a good example of how little a new section costs when a plain list and
+form is all it needs.
+
+**Cleaning Schedule** is the other kind of custom feature — a fixed hourly
+grid (7am–8pm, `CLEANING_TIME_SLOTS` in `lib/cleaning-shared.ts`) crossed with
+the days of whichever weeks touch the selected month
+(`weeksForMonth` in the same file). Each cell is one row in `cleaning_shifts`,
+keyed by `(week_start, day_of_week, time_slot)`; an empty cell simply has no
+row. A week collapses into a `<details>` automatically once every one of its
+days is in the past — open `app/(app)/cleaning/page.tsx` to change that rule.
+The grid cells themselves (`components/CleaningWeekGrid.tsx`) call
+`saveCleaningShiftAction` / `clearCleaningShiftAction` directly as plain
+async functions rather than through a `<form action>` — the natural way to
+wire up a table of ~100 independently-editable cells without a hidden input
+trio in every one of them. Split into `lib/cleaning.ts` (server, touches the
+database) and `lib/cleaning-shared.ts` (client-safe — the grid component
+needs the time slots and week math without pulling the database layer into
+the browser bundle), the same split used for listings and roles.

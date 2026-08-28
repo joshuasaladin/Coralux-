@@ -91,7 +91,8 @@ export type EntityKey =
   | "assets"
   | "sops"
   | "meetings"
-  | "events";
+  | "events"
+  | "inventory";
 
 // ---------------------------------------------------------------- option sets
 
@@ -927,6 +928,60 @@ export const ENTITIES: Record<EntityKey, Entity> = {
       { name: "notes", label: "Notes", type: "textarea", full: true },
     ],
   },
+
+  inventory: {
+    key: "inventory",
+    table: "inventory",
+    label: "Inventory",
+    singular: "Item",
+    icon: "box",
+    blurb: "Cleaning supplies, linens and amenities — what's in stock, and what's running low.",
+    titleField: "name",
+    subtitleField: "category",
+    defaultSort: "status = 'out' DESC, status = 'low' DESC, name ASC",
+    searchFields: ["name", "category", "location", "notes"],
+    fields: [
+      { name: "name", label: "Item", type: "text", required: true, inList: true },
+      {
+        name: "category",
+        label: "Category",
+        type: "select",
+        inList: true,
+        options: [
+          { value: "cleaning_supplies", label: "Cleaning supplies" },
+          { value: "linens", label: "Linens" },
+          { value: "amenities", label: "Guest amenities" },
+          { value: "paper_goods", label: "Paper goods" },
+          { value: "equipment", label: "Equipment" },
+          { value: "other", label: "Other" },
+        ],
+      },
+      { name: "quantity", label: "Quantity", type: "number", inList: true, required: true, editable: true },
+      { name: "unit", label: "Unit", type: "text", placeholder: "rolls, bottles, sets…" },
+      {
+        name: "par_level",
+        label: "Reorder below",
+        type: "number",
+        help: "When quantity falls below this, mark it Low.",
+      },
+      { name: "location", label: "Location", type: "text", inList: true, placeholder: "Storage — Eagle Beach" },
+      {
+        name: "status",
+        label: "Status",
+        type: "select",
+        inList: true,
+        required: true,
+        editable: true,
+        options: [
+          { value: "in_stock", label: "In stock", tone: "good" },
+          { value: "low", label: "Low", tone: "warn" },
+          { value: "out", label: "Out", tone: "bad" },
+          { value: "discontinued", label: "Discontinued", tone: "muted" },
+        ],
+      },
+      { name: "notes", label: "Notes", type: "textarea", full: true },
+    ],
+  },
 };
 
 export const ENTITY_KEYS = Object.keys(ENTITIES) as EntityKey[];
@@ -965,10 +1020,10 @@ export function optionTone(field: Field, value: unknown): Tone {
  *   plus the pages "/files" and "/reports".
  * ---------------------------------------------------------------------------
  */
-export const ENABLED_SECTIONS: EntityKey[] = ["tasks", "ideas", "vendors", "events"];
+export const ENABLED_SECTIONS: EntityKey[] = ["tasks", "ideas", "vendors", "events", "inventory"];
 
 /** Custom screens (not backed by a single entity) that are switched on. */
-export const ENABLED_PAGES: string[] = ["/", "/calendar", "/admin", "/listings"];
+export const ENABLED_PAGES: string[] = ["/", "/calendar", "/admin", "/listings", "/cleaning"];
 
 export function isEnabled(key: string): boolean {
   return (ENABLED_SECTIONS as string[]).includes(key);
@@ -1017,6 +1072,13 @@ const ALL_NAV: { group: string; items: NavItem[] }[] = [
       { href: "/timeoff", label: "Time off", icon: "sun", entity: "timeoff", minRole: "manager" },
       { href: "/vendors", label: "Vendors", icon: "wrench", entity: "vendors" },
       { href: "/contacts", label: "Contacts", icon: "phone", entity: "contacts" },
+    ],
+  },
+  {
+    group: "Cleaners",
+    items: [
+      { href: "/cleaning", label: "Cleaning Schedule", icon: "sparkle" },
+      { href: "/inventory", label: "Inventory", icon: "box", entity: "inventory" },
     ],
   },
   {
