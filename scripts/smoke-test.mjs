@@ -564,7 +564,10 @@ await step("admin: access control editor changes a section's required role live"
   await page.waitForSelector("text=Access control");
   const select = page.locator('select[aria-label="Vendors"]');
   await select.selectOption("admin");
-  await page.waitForTimeout(1500);
+  // wait for the save RPC to actually resolve (data-pending flips true then
+  // back to false) rather than a blind timeout guessing how long it takes
+  await page.waitForSelector('[data-pending="true"]', { timeout: 2000 }).catch(() => {});
+  await page.waitForSelector('[data-pending="false"]', { timeout: 10000 });
 
   const staff = await browser.newContext();
   const sp = await staff.newPage();
@@ -583,7 +586,8 @@ await step("admin: access control editor changes a section's required role live"
 
   // restore, so the rest of the suite (and the app) is left in its default state
   await select.selectOption("staff");
-  await page.waitForTimeout(1500);
+  await page.waitForSelector('[data-pending="true"]', { timeout: 2000 }).catch(() => {});
+  await page.waitForSelector('[data-pending="false"]', { timeout: 10000 });
 });
 await page.screenshot({ path: `${out}/72-admin-access-control.png`, fullPage: true });
 

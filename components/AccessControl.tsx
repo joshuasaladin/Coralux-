@@ -23,13 +23,13 @@ export default function AccessControl({
   }
 
   const handleChange = (key: string, role: Role) => {
-    startTransition(() => {
-      updateRoleOverrideAction(key, role);
+    startTransition(async () => {
+      await updateRoleOverrideAction(key, role);
     });
   };
 
   return (
-    <div className="space-y-4" style={{ opacity: pending ? 0.7 : 1 }}>
+    <div className="space-y-4" data-pending={pending} style={{ opacity: pending ? 0.7 : 1 }}>
       {[...groups.entries()].map(([group, items]) => (
         <div key={group}>
           <div className="label mb-1.5">{group}</div>
