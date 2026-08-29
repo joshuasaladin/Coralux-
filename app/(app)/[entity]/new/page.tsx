@@ -21,7 +21,7 @@ export default async function NewRecordPage({
   if (!entity) notFound();
 
   const user = await requireUser();
-  if (!canOpen(entity, user.role)) notFound();
+  if (!canOpen(entity, user)) notFound();
 
   const fields = visibleFields(entity, user.role);
 

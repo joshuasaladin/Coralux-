@@ -17,7 +17,7 @@ export default async function EditRecordPage({
   if (!entity) notFound();
 
   const user = await requireUser();
-  if (!canOpen(entity, user.role)) notFound();
+  if (!canOpen(entity, user)) notFound();
 
   const record = getRecord(entity, id);
   if (!record) notFound();

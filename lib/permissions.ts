@@ -6,42 +6,72 @@ import type { Role } from "./roles";
 
 export { PERMISSION_SECTIONS, type PermissionSection };
 
-/** All current role overrides, keyed by section. For rendering the whole
- * admin editor in one query — day-to-day checks use effectiveMinRole(). */
-export function getRoleOverrides(): Record<string, Role> {
-  const rows = all<{ section_key: string; min_role: Role }>(
-    `SELECT section_key, min_role FROM role_overrides`,
+/** Everything a permission check needs to know about who is asking. */
+export type Accessor = { id: string; role: Role };
+
+/**
+ * Access is decided per person. An admin can hand someone an exact list of
+ * sections — a cleaner gets the cleaning schedule and inventory, nothing
+ * else — and anyone left alone simply gets whatever their role gets. Owners
+ * are deliberately outside all of it: they always have everything, so the
+ * app can never be locked away from the person who runs it.
+ */
+
+/** The sections this person has been given by hand, or null if nobody has
+ * customised them and their role's defaults still apply. */
+export function customSectionsFor(userId: string): Set<string> | null {
+  const isCustom = one<{ user_id: string }>(
+    `SELECT user_id FROM user_access_custom WHERE user_id = ?`,
+    [userId],
   );
-  const map: Record<string, Role> = {};
-  for (const row of rows) map[row.section_key] = row.min_role;
-  return map;
+  if (!isCustom) return null;
+  const rows = all<{ section_key: string }>(
+    `SELECT section_key FROM user_section_access WHERE user_id = ?`,
+    [userId],
+  );
+  return new Set(rows.map((r) => r.section_key));
 }
 
-/** The role actually required to open a section right now — an admin's
- * override if they've set one, otherwise the code default. */
-export function effectiveMinRole(key: string, fallback: Role = "staff"): Role {
-  const row = one<{ min_role: Role }>(`SELECT min_role FROM role_overrides WHERE section_key = ?`, [key]);
-  return row?.min_role ?? fallback;
+/** The role that opens a section when nobody has customised the person. */
+function roleDefaultFor(key: string, fallback?: Role): Role {
+  if (fallback) return fallback;
+  return PERMISSION_SECTIONS.find((s) => s.key === key)?.defaultRole ?? "staff";
 }
 
-/** Whether a role can open a section right now, given any override. For
- * server actions behind a custom page, where a failed check should return
- * an error instead of 404ing (that's requireSection's job). */
-export function canAccessSection(role: Role, key: string, fallback: Role = "staff"): boolean {
-  return atLeast(role, effectiveMinRole(key, fallback));
+/** The sections an admin is allowed to hand out one by one. Dashboard,
+ * Calendar and Admin are deliberately not among them. */
+const CONFIGURABLE = new Set(PERMISSION_SECTIONS.map((s) => s.key));
+
+/**
+ * Whether this person may open a section. Owners always may; a customised
+ * person gets exactly their list; everyone else falls back to their role.
+ * Says nothing about whether the section is switched on — canSeeSection()
+ * covers that.
+ */
+export function canAccessSection(user: Accessor, key: string, fallback?: Role): boolean {
+  if (user.role === "owner") return true;
+  const min = roleDefaultFor(key, fallback);
+
+  // Dashboard, Calendar and Admin are never handed out by hand, so a custom
+  // list must not silently take them away — an admin who had their sections
+  // picked for them would otherwise lose the Admin page itself.
+  if (!CONFIGURABLE.has(key)) return atLeast(user.role, min);
+
+  const custom = customSectionsFor(user.id);
+  if (custom) return custom.has(key);
+  return atLeast(user.role, min);
 }
 
 /**
- * Whether a section is worth showing this user at all — switched on, and
- * open to their role. Looks the code default up itself, for the places that
- * link to sections from outside the nav and the entity registry (the
- * dashboard's cards and lists), so a section an admin has locked down does
- * not keep leaking its counts and record titles through the front page.
+ * Whether a section is worth showing this person at all — switched on, and
+ * open to them. For the places that link to sections from outside the nav
+ * and the entity registry (the dashboard's cards and lists), so a section
+ * somebody has been shut out of does not keep leaking its counts and record
+ * titles through the front page.
  */
-export function canSeeSection(role: Role, key: string): boolean {
+export function canSeeSection(user: Accessor, key: string): boolean {
   if (!isEnabled(key) && !isPageEnabled(`/${key}`)) return false;
-  const section = PERMISSION_SECTIONS.find((s) => s.key === key);
-  return atLeast(role, effectiveMinRole(key, section?.defaultRole ?? "staff"));
+  return canAccessSection(user, key);
 }
 
 /** The section a link points at — "/tasks/abc?status=todo" -> "tasks". */
@@ -49,22 +79,60 @@ export function sectionKeyFromHref(href: string): string {
   return href.replace(/^\//, "").split(/[/?]/)[0] ?? "";
 }
 
-export function setRoleOverride(key: string, role: Role): void {
-  run(
-    `INSERT INTO role_overrides (section_key, min_role) VALUES (?, ?)
-     ON CONFLICT(section_key) DO UPDATE SET min_role = excluded.min_role`,
-    [key, role],
-  );
+// ------------------------------------------------------------------ editing
+
+/** Give one person an exact set of sections, replacing whatever they had. */
+export function setUserSections(userId: string, keys: string[]): void {
+  const allowed = new Set(PERMISSION_SECTIONS.map((s) => s.key));
+  run(`INSERT OR IGNORE INTO user_access_custom (user_id) VALUES (?)`, [userId]);
+  run(`DELETE FROM user_section_access WHERE user_id = ?`, [userId]);
+  for (const key of keys) {
+    if (!allowed.has(key)) continue; // ignore anything not a real section
+    run(
+      `INSERT OR IGNORE INTO user_section_access (user_id, section_key) VALUES (?, ?)`,
+      [userId, key],
+    );
+  }
 }
+
+/** Put one person back on their role's defaults. */
+export function clearUserSections(userId: string): void {
+  run(`DELETE FROM user_section_access WHERE user_id = ?`, [userId]);
+  run(`DELETE FROM user_access_custom WHERE user_id = ?`, [userId]);
+}
+
+/** The sections a role gets on its own, before anyone customises a person. */
+export function sectionsForRole(role: Role): string[] {
+  if (role === "owner") return PERMISSION_SECTIONS.map((s) => s.key);
+  return PERMISSION_SECTIONS.filter((s) => atLeast(role, s.defaultRole)).map((s) => s.key);
+}
+
+/** What each person can currently open, for rendering the admin editor in
+ * one pass. `custom: false` means they are still on their role's defaults. */
+export function accessOverview(
+  users: { id: string; role: Role }[],
+): Record<string, { custom: boolean; keys: string[]; roleDefaultKeys: string[] }> {
+  const out: Record<string, { custom: boolean; keys: string[]; roleDefaultKeys: string[] }> = {};
+  for (const user of users) {
+    const custom = customSectionsFor(user.id);
+    const roleDefaultKeys = sectionsForRole(user.role);
+    out[user.id] = custom
+      ? { custom: true, keys: [...custom], roleDefaultKeys }
+      : { custom: false, keys: roleDefaultKeys, roleDefaultKeys };
+  }
+  return out;
+}
+
+// ------------------------------------------------------------------ guarding
 
 /**
  * For a custom page (not backed by the entity registry, so canOpen() doesn't
- * cover it) — signs the user in, checks the section's effective role, and
- * 404s if they don't have it. For actions that shouldn't 404, use
- * effectiveMinRole() + atLeast() directly and return an error instead.
+ * cover it) — signs the user in, checks they may open the section, and 404s
+ * if they may not. For actions that shouldn't 404, use canAccessSection()
+ * directly and return an error instead.
  */
-export async function requireSection(key: string, fallback: Role = "staff"): Promise<User> {
+export async function requireSection(key: string, fallback?: Role): Promise<User> {
   const user = await requireUser();
-  if (!atLeast(user.role, effectiveMinRole(key, fallback))) notFound();
+  if (!canAccessSection(user, key, fallback)) notFound();
   return user;
 }

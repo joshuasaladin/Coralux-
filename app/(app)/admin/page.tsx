@@ -6,7 +6,7 @@ import { atLeast, listUsers, requireUser } from "@/lib/auth";
 import { all, one } from "@/lib/db";
 import { ENTITIES, ENTITY_KEYS } from "@/lib/entities";
 import { formatDate } from "@/lib/format";
-import { getRoleOverrides, PERMISSION_SECTIONS } from "@/lib/permissions";
+import { accessOverview, PERMISSION_SECTIONS } from "@/lib/permissions";
 import { refOptions } from "@/lib/records";
 import { ROLES } from "@/lib/roles";
 
@@ -18,7 +18,17 @@ export default async function AdminPage() {
 
   const users = listUsers();
   const employees = refOptions("employees");
-  const roleOverrides = getRoleOverrides();
+  const access = accessOverview(users);
+  const people = users.map((u) => ({
+    id: u.id,
+    name: u.name,
+    email: u.email,
+    role: u.role,
+    custom: access[u.id]!.custom,
+    keys: access[u.id]!.keys,
+    roleDefaultKeys: access[u.id]!.roleDefaultKeys,
+    self: u.id === user.id,
+  }));
 
   const counts = ENTITY_KEYS.map((key) => {
     const entity = ENTITIES[key];
@@ -103,10 +113,16 @@ export default async function AdminPage() {
           </p>
         </Card>
 
-        <Card title="Access control" dense>
-          <div className="p-4">
-            <AccessControl sections={PERMISSION_SECTIONS} overrides={roleOverrides} />
-          </div>
+        <Card
+          title="Access control"
+          dense
+          action={
+            <span className="text-xs" style={{ color: "var(--ink-3)" }}>
+              open a person to pick their sections
+            </span>
+          }
+        >
+          <AccessControl people={people} sections={PERMISSION_SECTIONS} />
         </Card>
 
         <div className="grid lg:grid-cols-2 gap-5">

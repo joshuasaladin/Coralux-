@@ -22,7 +22,7 @@ export default async function DashboardPage() {
   // The dashboard links into every section, so it has to respect the same
   // access rules the nav does — otherwise a section an admin has locked down
   // still shows its counts and record titles here.
-  const canSee = (key: string) => canSeeSection(user.role, key);
+  const canSee = (key: string) => canSeeSection(user, key);
   const canFollow = (href: string) => canSee(sectionKeyFromHref(href));
 
   const s = dashboardSummary(user.role);

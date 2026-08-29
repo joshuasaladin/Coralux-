@@ -35,7 +35,7 @@ export default async function RecordPage({
   if (!entity) notFound();
 
   const user = await requireUser();
-  if (!canOpen(entity, user.role)) notFound();
+  if (!canOpen(entity, user)) notFound();
 
   const record = getRecord(entity, id);
   if (!record) notFound();
@@ -142,7 +142,7 @@ export default async function RecordPage({
 
           {(entity.related ?? []).map((rel) => {
             const child = ENTITIES[rel.entity];
-            if (!canOpen(child, user.role)) return null;
+            if (!canOpen(child, user)) return null;
             const rows = relatedRecords(rel, id);
             const childColumns = visibleFields(child, user.role).filter((f) => f.inList && f.name !== rel.fk);
             return (

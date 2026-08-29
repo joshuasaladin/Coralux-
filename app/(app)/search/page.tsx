@@ -21,7 +21,7 @@ export default async function SearchPage({
   const groups = q
     ? ENTITY_KEYS.map((key) => {
         const entity = ENTITIES[key];
-        if (!canOpen(entity, user.role)) return null;
+        if (!canOpen(entity, user)) return null;
         const rows = listRecords(entity, { search: q, limit: 8 });
         return rows.length ? { entity, rows } : null;
       }).filter(Boolean)

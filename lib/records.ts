@@ -8,7 +8,7 @@ import {
   isEnabled,
 } from "./entities";
 import { atLeast, type Role, type User } from "./auth";
-import { effectiveMinRole } from "./permissions";
+import { canAccessSection, type Accessor } from "./permissions";
 
 export type Row = Record<string, any>;
 
@@ -28,10 +28,9 @@ export function visibleFields(entity: Entity, role: Role): Field[] {
   });
 }
 
-export function canOpen(entity: Entity, role: Role): boolean {
+export function canOpen(entity: Entity, user: Accessor): boolean {
   if (!isEnabled(entity.key)) return false;
-  const min = effectiveMinRole(entity.key, entity.minRole ?? "staff");
-  return atLeast(role, min);
+  return canAccessSection(user, entity.key, entity.minRole ?? "staff");
 }
 
 /** Coerce a submitted form value into what SQLite should store. */
@@ -161,7 +160,7 @@ export function createRecord(
 ): string {
   const entity = getEntity(entityKey);
   if (!entity) throw new Error(`Unknown section: ${entityKey}`);
-  if (!canOpen(entity, user.role)) throw new Error("Not permitted");
+  if (!canOpen(entity, user)) throw new Error("Not permitted");
 
   const fields = writableFields(entity, user.role);
   const data: Row = { id: newId(), created_at: now(), updated_at: now() };
@@ -196,7 +195,7 @@ export function updateRecord(
 ): void {
   const entity = getEntity(entityKey);
   if (!entity) throw new Error(`Unknown section: ${entityKey}`);
-  if (!canOpen(entity, user.role)) throw new Error("Not permitted");
+  if (!canOpen(entity, user)) throw new Error("Not permitted");
 
   const before = getRecord(entity, recordId);
   if (!before) throw new Error("Record not found");

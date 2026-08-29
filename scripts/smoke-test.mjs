@@ -559,54 +559,88 @@ await step("employees: visible and accessible to admin, positioned under Vendors
 await page.screenshot({ path: `${out}/71-employees.png`, fullPage: true });
 
 // -------------------------------------------------------- admin access control
-await step("admin: access control editor changes a section's required role live", async () => {
+//
+// Access is per person now: open somebody in the Admin editor and tick the
+// sections they get. This models the case the whole feature exists for — a
+// cleaner who should see the cleaning schedule and inventory and nothing else.
+
+const asDwight = async () => {
+  const ctx = await browser.newContext();
+  const p = await ctx.newPage();
+  await p.goto(`${base}/login`);
+  await p.fill('input[name="email"]', "dwight@coralux.aw");
+  await p.fill('input[name="password"]', "coralux2026");
+  await p.click('button[type="submit"]');
+  await p.waitForURL(`${base}/`, { timeout: 15000 });
+  return { ctx, p };
+};
+
+await step("admin: access editor lists people, not sections", async () => {
   await page.goto(`${base}/admin`);
   await page.waitForSelector("text=Access control");
-  const select = page.locator('select[aria-label="Vendors"]');
-  await select.selectOption("admin");
-  // wait for the save RPC to actually resolve (data-pending flips true then
-  // back to false) rather than a blind timeout guessing how long it takes
-  await page.waitForSelector('[data-pending="true"]', { timeout: 2000 }).catch(() => {});
-  await page.waitForSelector('[data-pending="false"]', { timeout: 10000 });
+  for (const name of ["Dwight Tromp", "Marisol Kock", "Anouk Willems"]) {
+    if (await page.locator(`button:has-text("${name}")`).count() === 0) {
+      throw new Error(`expected ${name} to be listed in the access editor`);
+    }
+  }
+});
 
-  const staff = await browser.newContext();
-  const sp = await staff.newPage();
-  await sp.goto(`${base}/login`);
-  await sp.fill('input[name="email"]', "dwight@coralux.aw");
-  await sp.fill('input[name="password"]', "coralux2026");
-  await sp.click('button[type="submit"]');
-  await sp.waitForURL(`${base}/`, { timeout: 15000 });
+await step("admin: give one person cleaning + inventory only", async () => {
+  await page.click('button:has-text("Dwight Tromp")');
+  await page.waitForSelector('text=Select all');
 
-  const navHasVendors = await sp.locator('nav a:has-text("Vendors")').count();
-  if (navHasVendors > 0) throw new Error("staff should not see Vendors in the nav once overridden to admin");
-
-  // the dashboard links into every section too, so it must hide the locked
-  // one rather than keep showing its record count
-  const dashHasVendors = await sp.locator('a[href="/vendors"]').count();
-  if (dashHasVendors > 0) throw new Error("the dashboard still links to Vendors after it was locked to admin");
-
-  await sp.goto(`${base}/vendors`);
-  await sp.waitForSelector("text=Not available to your account");
-  await staff.close();
-
-  // restore, so the rest of the suite (and the app) is left in its default state
-  await select.selectOption("staff");
-  await page.waitForSelector('[data-pending="true"]', { timeout: 2000 }).catch(() => {});
-  await page.waitForSelector('[data-pending="false"]', { timeout: 10000 });
+  // start from nothing, then hand back exactly two sections
+  await page.click('button:has-text("Clear all")');
+  await page.waitForTimeout(700);
+  await page.click('input[aria-label="Dwight Tromp — Cleaning Schedule"]');
+  await page.waitForTimeout(700);
+  await page.click('input[aria-label="Dwight Tromp — Inventory"]');
+  await page.waitForTimeout(900);
 });
 await page.screenshot({ path: `${out}/72-admin-access-control.png`, fullPage: true });
 
-await step("admin: access control override reverted successfully", async () => {
-  const staff = await browser.newContext();
-  const sp = await staff.newPage();
-  await sp.goto(`${base}/login`);
-  await sp.fill('input[name="email"]', "dwight@coralux.aw");
-  await sp.fill('input[name="password"]', "coralux2026");
-  await sp.click('button[type="submit"]');
-  await sp.waitForURL(`${base}/`, { timeout: 15000 });
-  const navHasVendors = await sp.locator('a:has-text("Vendors")').count();
-  if (navHasVendors === 0) throw new Error("vendors override was not reverted — staff still cannot see Vendors in the nav");
-  await staff.close();
+await step("that person now sees only those two sections", async () => {
+  const { ctx, p } = await asDwight();
+  const navText = await p.locator("nav").first().innerText();
+
+  for (const shown of ["Cleaning Schedule", "Inventory"]) {
+    if (!navText.includes(shown)) throw new Error(`expected ${shown} in the nav, got:\n${navText}`);
+  }
+  for (const hidden of ["Tasks", "Vendors", "Listing Onboarding", "Ideas", "Contacts"]) {
+    if (navText.includes(hidden)) throw new Error(`${hidden} should be hidden, got:\n${navText}`);
+  }
+
+  // and the pages themselves are shut, not merely unlinked
+  await p.goto(`${base}/vendors`);
+  await p.waitForSelector("text=Not available to your account");
+
+  // while what they were given still works
+  await p.goto(`${base}/cleaning`);
+  await p.waitForSelector("text=Week of");
+  await p.goto(`${base}/inventory`);
+  await p.waitForSelector("text=Glass cleaner");
+  await ctx.close();
+});
+
+await step("admin: reset that person back to role defaults", async () => {
+  await page.goto(`${base}/admin`);
+  await page.click('button:has-text("Dwight Tromp")');
+  await page.waitForSelector('button:has-text("Reset to role defaults")');
+  await page.click('button:has-text("Reset to role defaults")');
+  await page.waitForTimeout(900);
+
+  const { ctx, p } = await asDwight();
+  const navText = await p.locator("nav").first().innerText();
+  if (!navText.includes("Tasks")) throw new Error(`reset did not restore role defaults, got:\n${navText}`);
+  await ctx.close();
+});
+
+await step("admin: an admin cannot edit their own access", async () => {
+  await page.goto(`${base}/admin`);
+  const selfRow = page.locator('button:has-text("· you")');
+  if (await selfRow.count() === 0) throw new Error("the signed-in admin's own row is not marked");
+  await selfRow.first().click();
+  await page.waitForSelector("text=You cannot change your own access");
 });
 
 if (errors.length) {

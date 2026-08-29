@@ -433,12 +433,22 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_cleaning_shift_cell
   ON cleaning_shifts(week_start, day_of_week, time_slot);
 CREATE INDEX IF NOT EXISTS idx_cleaning_shifts_week ON cleaning_shifts(week_start);
 
--- ------------------------------------------------- per-section role overrides
+-- --------------------------------------------------------- per-person access
 
--- Which minimum role a section requires, when an admin has changed it away
--- from the code default in lib/entities.ts (PERMISSION_SECTIONS). A section
--- with no row here just uses its default.
-CREATE TABLE IF NOT EXISTS role_overrides (
-  section_key TEXT PRIMARY KEY,
-  min_role    TEXT NOT NULL -- staff | manager | admin | owner
+-- Exactly which sections one person may open, when an admin has picked for
+-- them by hand. A user with no rows here simply gets what their role gets
+-- (the defaults in lib/entities.ts), so nobody has to be configured unless
+-- you actually want them to differ.
+CREATE TABLE IF NOT EXISTS user_section_access (
+  user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  section_key TEXT NOT NULL,
+  PRIMARY KEY (user_id, section_key)
+);
+CREATE INDEX IF NOT EXISTS idx_user_section_access_user ON user_section_access(user_id);
+
+-- Marks a person as "custom access" even while every box is unticked, so an
+-- empty allow-list stays empty instead of silently falling back to the role
+-- defaults and handing them more than was intended.
+CREATE TABLE IF NOT EXISTS user_access_custom (
+  user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE
 );

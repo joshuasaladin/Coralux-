@@ -31,7 +31,7 @@ export default async function ListPage({
   if (!entity) notFound();
 
   const user = await requireUser();
-  if (!canOpen(entity, user.role)) {
+  if (!canOpen(entity, user)) {
     const off = !isEnabled(entity.key);
     return (
       <div className="panel p-8 text-center">

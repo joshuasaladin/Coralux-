@@ -1,8 +1,8 @@
 import Shell from "@/components/Shell";
-import { atLeast, requireUser } from "@/lib/auth";
+import { requireUser } from "@/lib/auth";
 import { NAV } from "@/lib/entities";
 import { customLogo } from "@/lib/branding";
-import { effectiveMinRole } from "@/lib/permissions";
+import { canAccessSection } from "@/lib/permissions";
 
 export default async function AppLayout({
   children,
@@ -13,8 +13,7 @@ export default async function AppLayout({
     ...group,
     items: group.items.filter((item) => {
       const key = item.entity ?? item.href.replace(/^\//, "");
-      const min = effectiveMinRole(key, item.minRole ?? "staff");
-      return atLeast(user.role, min);
+      return canAccessSection(user, key, item.minRole ?? "staff");
     }),
   })).filter((group) => group.items.length > 0);
 

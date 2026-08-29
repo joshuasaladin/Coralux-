@@ -30,7 +30,7 @@ import {
   updateListing,
 } from "./listings";
 import { clearShift, upsertShift } from "./cleaning";
-import { canAccessSection, PERMISSION_SECTIONS, setRoleOverride } from "./permissions";
+import { canAccessSection, clearUserSections, setUserSections } from "./permissions";
 
 export type ActionState = { error?: string; ok?: string } | null;
 
@@ -215,7 +215,7 @@ export async function uploadFileAction(
   form: FormData,
 ): Promise<ActionState> {
   const user = await requireUser();
-  if (!canAccessSection(user.role, "files")) return { error: "Not permitted." };
+  if (!canAccessSection(user, "files")) return { error: "Not permitted." };
   const upload = form.get("file");
   if (!(upload instanceof File) || upload.size === 0) {
     return { error: "Choose a file to upload." };
@@ -246,7 +246,7 @@ export async function uploadFileAction(
 
 export async function attachExistingFileAction(form: FormData) {
   const user = await requireUser();
-  if (!canAccessSection(user.role, "files")) return;
+  if (!canAccessSection(user, "files")) return;
   const fileId = String(form.get("file_id") ?? "");
   const entity = String(form.get("__entity") ?? "");
   const entityId = String(form.get("__id") ?? "");
@@ -256,7 +256,7 @@ export async function attachExistingFileAction(form: FormData) {
 
 export async function detachFileAction(form: FormData) {
   const user = await requireUser();
-  if (!canAccessSection(user.role, "files")) return;
+  if (!canAccessSection(user, "files")) return;
   const fileId = String(form.get("file_id") ?? "");
   const entity = String(form.get("__entity") ?? "");
   const entityId = String(form.get("__id") ?? "");
@@ -266,7 +266,7 @@ export async function detachFileAction(form: FormData) {
 
 export async function deleteFileAction(form: FormData) {
   const user = await requireUser();
-  if (!atLeast(user.role, "manager") || !canAccessSection(user.role, "files")) return;
+  if (!atLeast(user.role, "manager") || !canAccessSection(user, "files")) return;
   await deleteFile(String(form.get("file_id") ?? ""), user);
   revalidatePath("/files");
 }
@@ -381,22 +381,33 @@ export async function saveSettingAction(form: FormData) {
   revalidatePath("/admin");
 }
 
-/** Who can access which section — an admin-editable override of the code
- * defaults. Called directly from a small client component, same RPC pattern
- * as the cleaning grid. */
-export async function updateRoleOverrideAction(
-  sectionKey: string,
-  role: Role,
+/**
+ * Which sections one person may open. Called directly from the admin
+ * editor's client component — the same RPC pattern as the cleaning grid.
+ * Passing null puts them back on their role's defaults.
+ */
+export async function updateUserAccessAction(
+  targetId: string,
+  sectionKeys: string[] | null,
 ): Promise<{ error?: string }> {
   const user = await requireUser();
   if (!atLeast(user.role, "admin")) return { error: "Admins only." };
-  if (!PERMISSION_SECTIONS.some((s) => s.key === sectionKey)) return { error: "Unknown section." };
-  if (!(["staff", "manager", "admin", "owner"] as Role[]).includes(role)) {
-    return { error: "Unknown role." };
-  }
-  setRoleOverride(sectionKey, role);
+
+  const target = one<{ role: Role }>(`SELECT role FROM users WHERE id = ?`, [targetId]);
+  if (!target) return { error: "That account no longer exists." };
+
+  // Two people are deliberately out of reach: yourself, so an admin cannot
+  // shut themselves out of the settings that would undo it, and owners, who
+  // always keep the run of the place.
+  if (targetId === user.id) return { error: "You cannot change your own access." };
+  if (target.role === "owner") return { error: "Owners always have full access." };
+
+  if (sectionKeys === null) clearUserSections(targetId);
+  else setUserSections(targetId, sectionKeys);
+
+  logActivity("users", targetId, "access", "Section access updated", user.id);
   revalidatePath("/admin");
-  revalidatePath("/");
+  revalidatePath("/", "layout");
   return {};
 }
 
@@ -407,7 +418,7 @@ export async function createListingAction(
   form: FormData,
 ): Promise<ActionState> {
   const user = await requireUser();
-  if (!canAccessSection(user.role, "listings")) return { error: "Not permitted." };
+  if (!canAccessSection(user, "listings")) return { error: "Not permitted." };
   let listingId: string;
   try {
     listingId = createListing(form, user);
@@ -423,7 +434,7 @@ export async function updateListingAction(
   form: FormData,
 ): Promise<ActionState> {
   const user = await requireUser();
-  if (!canAccessSection(user.role, "listings")) return { error: "Not permitted." };
+  if (!canAccessSection(user, "listings")) return { error: "Not permitted." };
   const listingId = String(form.get("__id") ?? "");
   try {
     updateListing(listingId, form, user);
@@ -437,7 +448,7 @@ export async function updateListingAction(
 
 export async function deleteListingAction(form: FormData) {
   const user = await requireUser();
-  if (!atLeast(user.role, "manager") || !canAccessSection(user.role, "listings")) return;
+  if (!atLeast(user.role, "manager") || !canAccessSection(user, "listings")) return;
   const listingId = String(form.get("__id") ?? "");
   deleteListing(listingId, user);
   revalidatePath("/listings");
@@ -446,7 +457,7 @@ export async function deleteListingAction(form: FormData) {
 
 export async function toggleListingStepAction(form: FormData) {
   const user = await requireUser();
-  if (!canAccessSection(user.role, "listings")) return;
+  if (!canAccessSection(user, "listings")) return;
   const listingId = String(form.get("__id") ?? "");
   const stepId = String(form.get("step_id") ?? "");
   toggleStep(stepId, user);
@@ -459,7 +470,7 @@ export async function addListingStepAction(
   form: FormData,
 ): Promise<ActionState> {
   const user = await requireUser();
-  if (!canAccessSection(user.role, "listings")) return { error: "Not permitted." };
+  if (!canAccessSection(user, "listings")) return { error: "Not permitted." };
   const listingId = String(form.get("__id") ?? "");
   const label = String(form.get("label") ?? "");
   if (!label.trim()) return { error: "Write the step first." };
@@ -471,7 +482,7 @@ export async function addListingStepAction(
 
 export async function deleteListingStepAction(form: FormData) {
   const user = await requireUser();
-  if (!canAccessSection(user.role, "listings")) return;
+  if (!canAccessSection(user, "listings")) return;
   const listingId = String(form.get("__id") ?? "");
   const stepId = String(form.get("step_id") ?? "");
   deleteStep(stepId, user);
@@ -494,7 +505,7 @@ export async function saveCleaningShiftAction(
   notes: string,
 ): Promise<{ error?: string }> {
   const user = await requireUser();
-  if (!canAccessSection(user.role, "cleaning")) return { error: "Not permitted." };
+  if (!canAccessSection(user, "cleaning")) return { error: "Not permitted." };
   try {
     upsertShift(weekStart, dayOfWeek, timeSlot, listing, notes);
   } catch (err) {
@@ -510,7 +521,7 @@ export async function clearCleaningShiftAction(
   timeSlot: string,
 ): Promise<{ error?: string }> {
   const user = await requireUser();
-  if (!canAccessSection(user.role, "cleaning")) return { error: "Not permitted." };
+  if (!canAccessSection(user, "cleaning")) return { error: "Not permitted." };
   clearShift(weekStart, dayOfWeek, timeSlot);
   revalidatePath("/cleaning");
   return {};
