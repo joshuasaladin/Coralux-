@@ -635,12 +635,36 @@ await step("admin: reset that person back to role defaults", async () => {
   await ctx.close();
 });
 
-await step("admin: an admin cannot edit their own access", async () => {
+await step("owner's own row is shown as always having everything", async () => {
+  // the seeded admin@coralux.aw account is an owner, so its row explains
+  // that rather than the self-edit rule
   await page.goto(`${base}/admin`);
   const selfRow = page.locator('button:has-text("· you")');
+  if (await selfRow.count() === 0) throw new Error("the signed-in user's own row is not marked");
+  await selfRow.first().click();
+  await page.waitForSelector("text=Owners always have access to everything");
+});
+
+await step("an admin cannot edit their own access", async () => {
+  const ctx = await browser.newContext();
+  const ap = await ctx.newPage();
+  await ap.goto(`${base}/login`);
+  await ap.fill('input[name="email"]', "anouk@coralux.aw"); // seeded with role: admin
+  await ap.fill('input[name="password"]', "coralux2026");
+  await ap.click('button[type="submit"]');
+  await ap.waitForURL(`${base}/`, { timeout: 15000 });
+
+  await ap.goto(`${base}/admin`);
+  await ap.waitForSelector("text=Access control");
+  const selfRow = ap.locator('button:has-text("· you")');
   if (await selfRow.count() === 0) throw new Error("the signed-in admin's own row is not marked");
   await selfRow.first().click();
-  await page.waitForSelector("text=You cannot change your own access");
+  await ap.waitForSelector("text=You cannot change your own access");
+
+  // and an owner is out of their reach too
+  await ap.click('button:has-text("Joshua Saladin")');
+  await ap.waitForSelector("text=Owners always have access to everything");
+  await ctx.close();
 });
 
 if (errors.length) {
