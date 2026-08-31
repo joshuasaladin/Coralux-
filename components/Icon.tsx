@@ -26,6 +26,7 @@ const P: Record<string, React.ReactNode> = {
   plus: <><path d="M12 5v14M5 12h14" /></>,
   search: <><circle cx="11" cy="11" r="6.5" /><path d="m16 16 5 5" /></>,
   back: <><path d="M15 5l-7 7 7 7" /></>,
+  undo: <><path d="M4 9h11a5 5 0 0 1 0 10h-6" /><path d="m8 5-4 4 4 4" /></>,
   chevron: <><path d="m9 5 7 7-7 7" /></>,
   paperclip: <><path d="M20 11.5 12.2 19.3a5 5 0 0 1-7.1-7.1l8.5-8.5a3.5 3.5 0 1 1 5 5l-8.5 8.5a2 2 0 0 1-2.8-2.8l7.8-7.8" /></>,
   trash: <><path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13" /></>,

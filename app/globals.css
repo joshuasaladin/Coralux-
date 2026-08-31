@@ -87,9 +87,6 @@ body {
   background: var(--brand); border-color: var(--brand); color: #fff;
 }
 .btn-primary:hover { background: var(--brand-ink); border-color: var(--brand-ink); }
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .btn-primary { color: #10171a; }
-}
 
 .btn-ghost { background: transparent; border-color: transparent; color: var(--ink-2); }
 .btn-ghost:hover { background: var(--panel-2); border-color: var(--line); }

@@ -35,7 +35,14 @@ const page = await (async () => {
 })();
 const errors = [];
 page.on("pageerror", (e) => errors.push(`pageerror: ${e.message}`));
-page.on("console", (m) => m.type() === "error" && errors.push(`console: ${m.text()}`));
+page.on("console", (m) => {
+  if (m.type() !== "error") return;
+  // the only requests that fail here are the external ones localOnly blocks
+  // on purpose; counting our own block as a failure would make the exit code
+  // meaningless
+  if (/Failed to load resource/.test(m.text())) return;
+  errors.push(`console: ${m.text()}`);
+});
 
 const step = async (name, fn) => {
   try { await fn(); console.log(`PASS  ${name}`); }
@@ -258,6 +265,45 @@ await step("create an event with a dropdown time", async () => {
 });
 await page.screenshot({ path: `${out}/14-event.png`, fullPage: true });
 
+
+// ------------------------------------------------------------------- undo
+await step("primary buttons keep white text", async () => {
+  await page.goto(`${base}/ideas`);
+  const btn = page.locator("a.btn-primary, button.btn-primary").first();
+  await btn.waitFor();
+  const color = await btn.evaluate((el) => getComputedStyle(el).color);
+  if (color !== "rgb(255, 255, 255)") throw new Error(`expected white text, got ${color}`);
+});
+
+await step("undo puts back a deleted record, notes and all", async () => {
+  await page.goto(`${base}/vendors`);
+  await page.click("text=ABC Pool Services");
+  await page.waitForSelector("text=Properties serviced");
+  page.once("dialog", (d) => d.accept());
+  await page.click('button:has-text("Delete")');
+  await page.waitForURL(`${base}/vendors`, { timeout: 15000 });
+  await page.waitForLoadState("networkidle");
+  if (await page.locator("table").locator("text=ABC Pool Services").count() !== 0) {
+    throw new Error("the vendor was not deleted");
+  }
+
+  const undo = page.locator('button:has-text("Undo")');
+  await undo.waitFor({ timeout: 10000 });
+  await undo.click();
+  await page.waitForTimeout(1500);
+
+  await page.goto(`${base}/vendors`);
+  await page.waitForSelector("text=ABC Pool Services", { timeout: 10000 });
+  await page.click("text=ABC Pool Services");
+  await page.waitForSelector("text=Call before changing the pool schedule", { timeout: 10000 });
+});
+
+await step("undo is offered only while there is something to put back", async () => {
+  await page.goto(`${base}/`);
+  if (await page.locator('button:has-text("Undo")').count() !== 0) {
+    throw new Error("undo still offered after it was used");
+  }
+});
 
 // ---------------------------------------------------------------- admin delete
 await step("admin: create a throwaway user, then delete it", async () => {

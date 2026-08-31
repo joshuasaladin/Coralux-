@@ -1,6 +1,7 @@
 import { all, id as newId, logActivity, now, one, run } from "./db";
 import type { User } from "./auth";
 import { ONBOARDING_STEPS } from "./onboarding-template";
+import { capture, recordDeletion } from "./undo";
 
 export type Listing = Record<string, any>;
 export type ListingStep = Record<string, any>;
@@ -115,6 +116,20 @@ export function updateListing(listingId: string, form: FormData, user: User): vo
 
 export function deleteListing(listingId: string, user: User): void {
   const listing = getListing(listingId);
+
+  // the checklist goes with the listing, so it has to come back with it too
+  recordDeletion({
+    kind: "listing",
+    label: listing?.name ?? "Listing",
+    actorId: user.id,
+    snapshot: [
+      capture("listings", "id = ?", [listingId]),
+      capture("listing_steps", "listing_id = ?", [listingId]),
+      capture("notes", "entity = 'listings' AND entity_id = ?", [listingId]),
+      capture("file_links", "entity = 'listings' AND entity_id = ?", [listingId]),
+    ],
+  });
+
   run(`DELETE FROM listings WHERE id = ?`, [listingId]);
   run(`DELETE FROM notes WHERE entity = 'listings' AND entity_id = ?`, [listingId]);
   run(`DELETE FROM file_links WHERE entity = 'listings' AND entity_id = ?`, [listingId]);
@@ -169,6 +184,12 @@ export function deleteStep(stepId: string, user: User): void {
   // not something to be edited away one listing at a time — only an extra
   // step somebody added by hand (which carries no section) can be removed.
   if (step.section) return;
+  recordDeletion({
+    kind: "checklist step",
+    label: step.label,
+    actorId: user.id,
+    snapshot: [capture("listing_steps", "id = ?", [stepId])],
+  });
   run(`DELETE FROM listing_steps WHERE id = ?`, [stepId]);
   logActivity("listings", step.listing_id, "checklist", `Removed step "${step.label}"`, user.id);
   syncListingStatus(step.listing_id, user);

@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { UPLOAD_DIR, all, id as newId, logActivity, now, one, run } from "./db";
 import type { User } from "./auth";
+import { capture, recordDeletion } from "./undo";
 
 export const MAX_UPLOAD_BYTES = 25 * 1024 * 1024; // 25 MB
 
@@ -26,7 +27,9 @@ export async function readStored(key: string): Promise<Buffer> {
   return fs.readFile(resolved);
 }
 
-async function remove(key: string): Promise<void> {
+/** Take an upload off the disk for good. Called when an undo entry holding
+ * a deleted file is finally pruned. */
+export async function removeUpload(key: string): Promise<void> {
   try {
     await fs.unlink(path.join(UPLOAD_DIR, key));
   } catch {
@@ -132,7 +135,21 @@ export function fileLinks(fileId: string) {
 export async function deleteFile(fileId: string, user: User) {
   const file = getFile(fileId);
   if (!file) return;
-  await remove(file.storage_key);
+
+  // The upload itself stays on disk for now: restoring only the row would
+  // hand back a document that no longer opens. It is removed for real when
+  // the undo entry is pruned.
+  recordDeletion({
+    kind: "file",
+    label: file.name,
+    actorId: user.id,
+    blobKeys: [file.storage_key],
+    snapshot: [
+      capture("files", "id = ?", [fileId]),
+      capture("file_links", "file_id = ?", [fileId]),
+    ],
+  });
+
   run(`DELETE FROM files WHERE id = ?`, [fileId]);
   logActivity("files", fileId, "deleted", `Deleted ${file.name}`, user.id);
 }

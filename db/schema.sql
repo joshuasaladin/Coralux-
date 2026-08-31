@@ -435,6 +435,25 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_cleaning_shift_cell
   ON cleaning_shifts(week_start, day_of_week, time_slot);
 CREATE INDEX IF NOT EXISTS idx_cleaning_shifts_week ON cleaning_shifts(week_start);
 
+-- ------------------------------------------------------------------- undo
+
+-- A snapshot of whatever a delete was about to throw away, so it can be put
+-- back. payload is the rows themselves, as JSON, table by table — a listing
+-- brings its checklist and notes along with it. Entries are pruned after a
+-- month, and any file blob held back for one is removed at the same time.
+CREATE TABLE IF NOT EXISTS deleted_items (
+  id         TEXT PRIMARY KEY,
+  kind       TEXT NOT NULL,  -- what was deleted, for the button's wording
+  label      TEXT NOT NULL,  -- its name, so the button can say what it will bring back
+  payload    TEXT NOT NULL,  -- [{ table, rows }]
+  blob_keys  TEXT,           -- upload keys kept on disk until this is pruned
+  actor_id   TEXT,
+  created_at TEXT NOT NULL,
+  undone_at  TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_deleted_items_open
+  ON deleted_items(undone_at, created_at DESC);
+
 -- --------------------------------------------------------- per-person access
 
 -- Exactly which sections one person may open, when an admin has picked for

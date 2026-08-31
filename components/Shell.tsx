@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import Icon from "./Icon";
+import UndoButton, { type PendingUndo } from "./UndoButton";
 import Logo from "./Logo";
 import QuickAdd from "./QuickAdd";
 import type { Role } from "@/lib/roles";
@@ -14,11 +15,13 @@ type NavGroup = { group: string; items: NavItem[] };
 export default function Shell({
   nav,
   user,
+  pendingUndo,
   logoSrc,
   children,
 }: {
   nav: NavGroup[];
   user: { name: string; email: string; role: Role };
+  pendingUndo: PendingUndo | null;
   logoSrc?: string | null;
   children: React.ReactNode;
 }) {
@@ -141,6 +144,7 @@ export default function Shell({
           </form>
 
           <div className="ml-auto flex items-center gap-2">
+            <UndoButton pending={pendingUndo} />
             <QuickAdd role={user.role} />
           </div>
         </header>

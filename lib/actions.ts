@@ -32,6 +32,7 @@ import {
 } from "./listings";
 import { clearShift, upsertShift } from "./cleaning";
 import { canAccessSection, clearUserSections, setUserSections } from "./permissions";
+import { capture, latestUndoable, recordDeletion, undoDeletion } from "./undo";
 
 export type ActionState = { error?: string; ok?: string } | null;
 
@@ -202,8 +203,17 @@ export async function deleteNoteAction(form: FormData) {
   const noteId = String(form.get("note_id") ?? "");
   const entity = String(form.get("__entity") ?? "");
   const entityId = String(form.get("__id") ?? "");
-  const note = one<{ author_id: string }>(`SELECT author_id FROM notes WHERE id = ?`, [noteId]);
+  const note = one<{ author_id: string; body: string }>(
+    `SELECT author_id, body FROM notes WHERE id = ?`,
+    [noteId],
+  );
   if (note && (note.author_id === user.id || atLeast(user.role, "admin"))) {
+    recordDeletion({
+      kind: "note",
+      label: note.body.length > 40 ? `${note.body.slice(0, 40)}…` : note.body,
+      actorId: user.id,
+      snapshot: [capture("notes", "id = ?", [noteId])],
+    });
     run(`DELETE FROM notes WHERE id = ?`, [noteId]);
   }
   revalidatePath(`/${entity}/${entityId}`);
@@ -363,6 +373,19 @@ export async function deleteUserAction(
     const owners = one<{ c: number }>(`SELECT COUNT(*) AS c FROM users WHERE role = 'owner'`);
     if ((owners?.c ?? 0) <= 1) return { error: "There must be at least one owner account." };
   }
+
+  // sessions are deliberately left out: putting an account back should not
+  // put somebody's old signed-in browser back with it
+  recordDeletion({
+    kind: "account",
+    label: target.name,
+    actorId: user.id,
+    snapshot: [
+      capture("users", "id = ?", [targetId]),
+      capture("user_section_access", "user_id = ?", [targetId]),
+      capture("user_access_custom", "user_id = ?", [targetId]),
+    ],
+  });
 
   run(`DELETE FROM sessions WHERE user_id = ?`, [targetId]);
   run(`DELETE FROM users WHERE id = ?`, [targetId]);
@@ -537,7 +560,46 @@ export async function clearCleaningShiftAction(
 ): Promise<{ error?: string }> {
   const user = await requireUser();
   if (!canAccessSection(user, "cleaning")) return { error: "Not permitted." };
+  const cell = "week_start = ? AND day_of_week = ? AND time_slot = ?";
+  const shift = one<{ listing: string | null }>(
+    `SELECT listing FROM cleaning_shifts WHERE ${cell}`,
+    [weekStart, dayOfWeek, timeSlot],
+  );
+  recordDeletion({
+    kind: "cleaning shift",
+    label: shift?.listing || `${timeSlot} shift`,
+    actorId: user.id,
+    snapshot: [capture("cleaning_shifts", cell, [weekStart, dayOfWeek, timeSlot])],
+  });
   clearShift(weekStart, dayOfWeek, timeSlot);
   revalidatePath("/cleaning");
   return {};
+}
+
+// ---------------------------------------------------------------------- undo
+
+/** What the Undo button in the header should currently offer, if anything. */
+export async function pendingUndo() {
+  const user = await requireUser();
+  const entry = latestUndoable(user);
+  if (!entry) return null;
+  return {
+    id: entry.id,
+    kind: entry.kind,
+    label: entry.label,
+    byOther: entry.actor_id !== user.id,
+    actorName: entry.actor_name,
+  };
+}
+
+/** Put the most recent deletion back. */
+export async function undoDeleteAction(deletionId: string): Promise<{ error?: string; ok?: string }> {
+  const user = await requireUser();
+  const result = undoDeletion(deletionId, user);
+  if (result.error) return { error: result.error };
+
+  // a restore can land anywhere, so refresh the whole tree rather than
+  // guess which list the row belongs back in
+  revalidatePath("/", "layout");
+  return { ok: `${result.label} is back.` };
 }

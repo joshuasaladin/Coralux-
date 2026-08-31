@@ -3,6 +3,7 @@ import { requireUser } from "@/lib/auth";
 import { NAV } from "@/lib/entities";
 import { customLogo } from "@/lib/branding";
 import { canAccessSection } from "@/lib/permissions";
+import { pendingUndo } from "@/lib/actions";
 
 export default async function AppLayout({
   children,
@@ -20,6 +21,7 @@ export default async function AppLayout({
   return (
     <Shell
       nav={nav}
+      pendingUndo={await pendingUndo()}
       user={{ name: user.name, email: user.email, role: user.role }}
       logoSrc={customLogo()}
     >

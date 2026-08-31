@@ -9,6 +9,7 @@ import {
 } from "./entities";
 import { atLeast, type Role, type User } from "./auth";
 import { canAccessSection, type Accessor } from "./permissions";
+import { capture, recordDeletion } from "./undo";
 
 export type Row = Record<string, any>;
 
@@ -245,6 +246,19 @@ export function deleteRecord(entityKey: string, recordId: string, user: User) {
   const entity = getEntity(entityKey);
   if (!entity) throw new Error(`Unknown section: ${entityKey}`);
   if (!atLeast(user.role, "manager")) throw new Error("Not permitted");
+
+  const existing = getRecord(entity, recordId);
+  recordDeletion({
+    kind: entity.singular.toLowerCase(),
+    label: existing ? recordTitle(entity, existing) : entity.singular,
+    actorId: user.id,
+    snapshot: [
+      capture(entity.table, "id = ?", [recordId]),
+      capture("notes", "entity = ? AND entity_id = ?", [entity.key, recordId]),
+      capture("file_links", "entity = ? AND entity_id = ?", [entity.key, recordId]),
+    ],
+  });
+
   run(`DELETE FROM ${entity.table} WHERE id = ?`, [recordId]);
   run(`DELETE FROM notes WHERE entity = ? AND entity_id = ?`, [entity.key, recordId]);
   run(`DELETE FROM file_links WHERE entity = ? AND entity_id = ?`, [entity.key, recordId]);
