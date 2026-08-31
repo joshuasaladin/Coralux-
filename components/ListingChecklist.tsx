@@ -151,13 +151,17 @@ function StepRow({ listingId, step, bordered }: { listingId: string; step: Step;
           )}
           <StepNote listingId={listingId} step={step} />
         </div>
-        <form action={deleteListingStepAction} className="opacity-0 group-hover:opacity-100 transition-opacity">
-          <input type="hidden" name="__id" value={listingId} />
-          <input type="hidden" name="step_id" value={step.id} />
-          <button className="btn btn-ghost btn-sm" title="Remove this step" type="submit">
-            <Icon name="x" className="w-3.5 h-3.5" />
-          </button>
-        </form>
+        {/* the standard checklist is fixed for every property — only an extra
+            step somebody added by hand can be taken off again */}
+        {!step.section && (
+          <form action={deleteListingStepAction} className="opacity-0 group-hover:opacity-100 transition-opacity">
+            <input type="hidden" name="__id" value={listingId} />
+            <input type="hidden" name="step_id" value={step.id} />
+            <button className="btn btn-ghost btn-sm" title="Remove this extra step" type="submit">
+              <Icon name="x" className="w-3.5 h-3.5" />
+            </button>
+          </form>
+        )}
       </div>
     </li>
   );

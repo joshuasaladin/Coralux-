@@ -338,6 +338,35 @@ await step("listings: add a custom step", async () => {
   await page.waitForSelector("text=Confirm insurance certificate on file", { timeout: 15000 });
 });
 
+await step("listings: the standard checklist cannot be pulled apart", async () => {
+  // every one of the 114 template steps is fixed; only an extra step
+  // somebody adds by hand carries a remove button. An earlier step in this
+  // suite already added one, so compare against the count rather than zero.
+  const total = await page.locator('form button[aria-pressed]').count();
+  const extras = total - 114;
+  const removable = await page.locator('button[title="Remove this extra step"]').count();
+  if (removable !== extras) {
+    throw new Error(`${removable} remove buttons for ${extras} extra steps (of ${total} total)`);
+  }
+
+  const label = `Extra check ${Date.now()}`;
+  const checklist = page.locator('section:has(h2:text("Onboarding checklist"))');
+  const addForm = page.locator("form", { has: page.locator('input[aria-label="Add a step"]') });
+  await addForm.locator('input[aria-label="Add a step"]').fill(label);
+  await addForm.locator('button[type="submit"]').click();
+  await checklist.locator(`li:has-text("${label}")`).waitFor({ timeout: 15000 });
+
+  if (await page.locator('button[title="Remove this extra step"]').count() !== extras + 1) {
+    throw new Error("adding an extra step should add exactly one remove button");
+  }
+  await page.locator('button[title="Remove this extra step"]').last().click();
+  await page.waitForTimeout(1200);
+  await page.reload();
+  if (await checklist.locator(`li:has-text("${label}")`).count() !== 0) {
+    throw new Error("an extra step should still be removable");
+  }
+});
+
 await step("listings: a note can be kept against a checklist item", async () => {
   await page.locator('button:has-text("add a note")').first().click({ force: true });
   const box = page.locator("textarea[aria-label]").first();

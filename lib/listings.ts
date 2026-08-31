@@ -165,6 +165,10 @@ export function setStepNote(stepId: string, note: string): void {
 export function deleteStep(stepId: string, user: User): void {
   const step = one<ListingStep>(`SELECT * FROM listing_steps WHERE id = ?`, [stepId]);
   if (!step) return;
+  // The standard villa checklist is the same for every property, so it is
+  // not something to be edited away one listing at a time — only an extra
+  // step somebody added by hand (which carries no section) can be removed.
+  if (step.section) return;
   run(`DELETE FROM listing_steps WHERE id = ?`, [stepId]);
   logActivity("listings", step.listing_id, "checklist", `Removed step "${step.label}"`, user.id);
   syncListingStatus(step.listing_id, user);
