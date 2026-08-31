@@ -26,6 +26,7 @@ import {
   createListing,
   deleteListing,
   deleteStep,
+  setStepNote,
   toggleStep,
   updateListing,
 } from "./listings";
@@ -478,6 +479,20 @@ export async function addListingStepAction(
   revalidatePath(`/listings/${listingId}`);
   revalidatePath("/listings");
   return { ok: "Step added." };
+}
+
+/** A note kept against one checklist item. Called straight from the
+ * checklist's client component as you type, so there is nothing to press. */
+export async function setListingStepNoteAction(
+  listingId: string,
+  stepId: string,
+  note: string,
+): Promise<{ error?: string }> {
+  const user = await requireUser();
+  if (!canAccessSection(user, "listings")) return { error: "Not permitted." };
+  setStepNote(stepId, note);
+  revalidatePath(`/listings/${listingId}`);
+  return {};
 }
 
 export async function deleteListingStepAction(form: FormData) {

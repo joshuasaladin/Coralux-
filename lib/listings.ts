@@ -1,5 +1,6 @@
 import { all, id as newId, logActivity, now, one, run } from "./db";
 import type { User } from "./auth";
+import { ONBOARDING_STEPS } from "./onboarding-template";
 
 export type Listing = Record<string, any>;
 export type ListingStep = Record<string, any>;
@@ -9,25 +10,7 @@ export type ListingStep = Record<string, any>;
 // directly, since this module pulls in the (node-only) database layer.
 export { PLATFORM_OPTIONS, STATUS_OPTIONS, statusTone, statusLabel, platformLabel } from "./listing-options";
 
-/**
- * The standard checklist a new listing starts with. Edit this list freely —
- * it only affects listings created from now on; existing listings keep
- * whatever steps they already have.
- */
-export const DEFAULT_STEPS: string[] = [
-  "Property details collected (address, access, WiFi, house rules)",
-  "Professional photos taken",
-  "Listing title & description written",
-  "Amenities list finalized",
-  "Pricing & minimum-stay set",
-  "House rules & cancellation policy set",
-  "Calendar / availability set",
-  "Airbnb listing created",
-  "Guesty listing created & PMS connected",
-  "Channel manager sync verified (Airbnb ⇄ Guesty)",
-  "Payout / banking details configured",
-  "Listing published & live",
-];
+export { ONBOARDING_TEMPLATE, ONBOARDING_STEPS } from "./onboarding-template";
 
 export function listListings(): Listing[] {
   return all<Listing>(
@@ -94,14 +77,15 @@ export function createListing(form: FormData, user: User): string {
     ],
   );
 
-  DEFAULT_STEPS.forEach((label, index) => {
+  ONBOARDING_STEPS.forEach((step, index) => {
     run(
-      `INSERT INTO listing_steps (id, listing_id, label, sort, done, created_at) VALUES (?, ?, ?, ?, 0, ?)`,
-      [newId(), listingId, label, index, now()],
+      `INSERT INTO listing_steps (id, listing_id, label, section, sort, done, created_at)
+       VALUES (?, ?, ?, ?, ?, 0, ?)`,
+      [newId(), listingId, step.label, step.section, index, now()],
     );
   });
 
-  logActivity("listings", listingId, "created", `Listing created with a ${DEFAULT_STEPS.length}-step checklist`, user.id);
+  logActivity("listings", listingId, "created", `Listing created with a ${ONBOARDING_STEPS.length}-step checklist`, user.id);
   return listingId;
 }
 
@@ -169,6 +153,13 @@ export function addStep(listingId: string, label: string, user: User): void {
   );
   logActivity("listings", listingId, "checklist", `Added step "${trimmed}"`, user.id);
   syncListingStatus(listingId, user);
+}
+
+/** Whatever detail somebody wants kept against one checklist item — a code,
+ * a vendor name, why something is still outstanding. */
+export function setStepNote(stepId: string, note: string): void {
+  const trimmed = note.trim();
+  run(`UPDATE listing_steps SET note = ? WHERE id = ?`, [trimmed || null, stepId]);
 }
 
 export function deleteStep(stepId: string, user: User): void {

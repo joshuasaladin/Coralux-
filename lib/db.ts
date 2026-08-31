@@ -38,9 +38,11 @@ function connect(): Database.Database {
 export function getDb(): Database.Database {
   if (!global.__coraluxDb) {
     global.__coraluxDb = connect();
-    // seed() is imported lazily to avoid a circular import at module load
+    // both are imported lazily to avoid a circular import at module load
     const { seedIfEmpty } = require("./seed") as typeof import("./seed");
     seedIfEmpty(global.__coraluxDb);
+    const { migrate } = require("./migrations") as typeof import("./migrations");
+    migrate(global.__coraluxDb);
   }
   return global.__coraluxDb;
 }

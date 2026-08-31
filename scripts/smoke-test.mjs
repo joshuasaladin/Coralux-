@@ -1,4 +1,5 @@
 import { chromium } from "playwright";
+import Database from "better-sqlite3";
 
 const base = "http://localhost:3000";
 const out = process.argv[2] ?? "./screenshots";
@@ -276,9 +277,14 @@ await step("listings: create a new listing auto-seeds the checklist", async () =
   await page.click('button:has-text("Create listing")');
   await page.waitForSelector("text=Onboarding checklist", { timeout: 15000 });
   await page.waitForSelector("text=Professional photos taken");
-  const count = await page.locator('li:has-text("checked")').count(); // none checked yet
-  const totalSteps = await page.locator("ul li").count();
-  if (totalSteps < 12) throw new Error(`expected at least 12 steps, got ${totalSteps}`);
+  await page.locator('form button[aria-pressed]').first().waitFor({ timeout: 15000 });
+  const totalSteps = await page.locator('form button[aria-pressed]').count();
+  if (totalSteps !== 114) throw new Error(`expected the full 114-step villa checklist, got ${totalSteps}`);
+  for (const section of ["Owner & Property Setup", "Property Inspection", "Go Live"]) {
+    if (await page.locator(`summary:has-text("${section}")`).count() === 0) {
+      throw new Error(`checklist is missing the ${section} section`);
+    }
+  }
 });
 await page.screenshot({ path: `${out}/52-listing-detail-fresh.png`, fullPage: true });
 
@@ -301,16 +307,37 @@ await step("listings: add a custom step", async () => {
   await page.waitForSelector("text=Confirm insurance certificate on file", { timeout: 15000 });
 });
 
+await step("listings: a note can be kept against a checklist item", async () => {
+  await page.locator('button:has-text("add a note")').first().click({ force: true });
+  const box = page.locator("textarea[aria-label]").first();
+  await box.fill("Keybox code 4417 — spare with the owner.");
+  await page.waitForTimeout(1200);
+  await page.reload();
+  const saved = await page.locator("textarea[aria-label]").first().inputValue();
+  if (!saved.includes("4417")) throw new Error(`note did not persist, got "${saved}"`);
+});
+
 await step("listings: checking every step flips status to Active automatically", async () => {
-  // check off all remaining boxes
-  for (let i = 0; i < 20; i++) {
-    const boxes = page.locator('form button[aria-pressed="false"]');
-    const n = await boxes.count();
-    if (n === 0) break;
-    await boxes.first().click();
-    await page.waitForTimeout(400);
+  // 114 boxes is too many to click one at a time, so mark all but the last
+  // straight in the database and tick the final one through the UI — the
+  // point of the test is that the last tick is what flips the status.
+  const listingId = new URL(listingUrl).pathname.split("/").pop();
+  const db = new Database("./data/coralux.db");
+  const last = db.prepare(
+    `SELECT id FROM listing_steps WHERE listing_id = ? ORDER BY sort DESC, created_at DESC LIMIT 1`,
+  ).get(listingId);
+  db.prepare(
+    `UPDATE listing_steps SET done = 1, done_at = ? WHERE listing_id = ? AND id != ?`,
+  ).run(new Date().toISOString(), listingId, last.id);
+  db.close();
+
+  await page.reload();
+  const remaining = page.locator('form button[aria-pressed="false"]');
+  if (await remaining.count() !== 1) {
+    throw new Error(`expected exactly one step left, got ${await remaining.count()}`);
   }
-  await page.waitForTimeout(1000);
+  await remaining.first().click();
+  await page.waitForTimeout(1200);
   await page.reload();
   await page.waitForSelector("text=Active", { timeout: 15000 });
 });
@@ -363,6 +390,36 @@ await step("inventory: inline quantity edit saves", async () => {
   await page.reload();
   const after = await page.locator("tr", { hasText: "Toilet paper" }).locator('input[aria-label="Quantity"]').inputValue();
   if (after !== "20") throw new Error(`expected 20, got ${after}`);
+});
+
+await step("inventory: status follows the quantity on the shelf", async () => {
+  await page.goto(`${base}/inventory`);
+  const row = () => page.locator("tr", { hasText: "Toilet paper" });
+  const setQty = async (value) => {
+    const input = row().locator('input[aria-label="Quantity"]');
+    await input.fill(String(value));
+    await input.press("Tab");
+    await page.waitForTimeout(1200);
+    await page.reload();
+  };
+  const status = async () => row().locator('select[aria-label="Status"]').inputValue();
+
+  await setQty(0);
+  if (await status() !== "out") throw new Error(`nothing on the shelf should read out, got ${await status()}`);
+
+  await setQty(80);
+  if (await status() !== "in_stock") throw new Error(`a full shelf should read in_stock, got ${await status()}`);
+});
+
+await step("inventory: dipping under the reorder point reads Low", async () => {
+  const row = () => page.locator("tr", { hasText: "Glass cleaner" });
+  const input = row().locator('input[aria-label="Quantity"]');
+  await input.fill("1");
+  await input.press("Tab");
+  await page.waitForTimeout(1200);
+  await page.reload();
+  const status = await row().locator('select[aria-label="Status"]').inputValue();
+  if (status !== "low") throw new Error(`under the reorder point should read low, got ${status}`);
 });
 
 await step("inventory: create a new item", async () => {

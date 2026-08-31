@@ -963,7 +963,7 @@ export const ENTITIES: Record<EntityKey, Entity> = {
         name: "par_level",
         label: "Reorder below",
         type: "number",
-        help: "When quantity falls below this, mark it Low.",
+        help: "Drop under this and the item marks itself Low.",
       },
       { name: "location", label: "Location", type: "text", inList: true, placeholder: "Storage — Eagle Beach" },
       {
@@ -973,6 +973,7 @@ export const ENTITIES: Record<EntityKey, Entity> = {
         inList: true,
         required: true,
         editable: true,
+        help: "Follows the quantity on its own. Choose Discontinued to stop that.",
         options: [
           { value: "in_stock", label: "In stock", tone: "good" },
           { value: "low", label: "Low", tone: "warn" },

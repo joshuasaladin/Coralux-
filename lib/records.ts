@@ -261,6 +261,34 @@ function afterWrite(entity: Entity, recordId: string, user: User) {
     if (payment?.invoice_id) syncInvoiceStatus(payment.invoice_id, user);
   }
   if (entity.key === "invoices") syncInvoiceStatus(recordId, user);
+  if (entity.key === "inventory") syncInventoryStatus(recordId, user);
+}
+
+/**
+ * Stock status follows the count on the shelf, the same way an invoice's
+ * status follows its payments — nothing on hand reads Out, dipping under the
+ * reorder point reads Low, and anything else is In stock. "Discontinued" is
+ * the one status somebody sets deliberately, so it is left alone.
+ */
+export function syncInventoryStatus(itemId: string, user?: User) {
+  const item = one<Row>(`SELECT * FROM inventory WHERE id = ?`, [itemId]);
+  if (!item || item.status === "discontinued") return;
+  if (item.quantity === null || item.quantity === undefined) return;
+
+  const quantity = Number(item.quantity);
+  const par = item.par_level === null || item.par_level === undefined ? null : Number(item.par_level);
+  const next = quantity <= 0 ? "out" : par !== null && quantity < par ? "low" : "in_stock";
+
+  if (next !== item.status) {
+    run(`UPDATE inventory SET status = ?, updated_at = ? WHERE id = ?`, [next, now(), itemId]);
+    logActivity(
+      "inventory",
+      itemId,
+      "status",
+      `Status follows the quantity — now ${next === "in_stock" ? "in stock" : next}`,
+      user?.id ?? null,
+    );
+  }
 }
 
 export function syncInvoiceStatus(invoiceId: string, user?: User) {

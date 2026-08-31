@@ -392,6 +392,8 @@ CREATE TABLE IF NOT EXISTS listing_steps (
   id          TEXT PRIMARY KEY,
   listing_id  TEXT NOT NULL REFERENCES listings(id) ON DELETE CASCADE,
   label       TEXT NOT NULL,
+  section     TEXT,          -- which part of the onboarding checklist it belongs to
+  note        TEXT,          -- whatever detail somebody wants to keep against it
   sort        INTEGER NOT NULL DEFAULT 0,
   done        INTEGER NOT NULL DEFAULT 0,
   done_at     TEXT,
