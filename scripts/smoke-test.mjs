@@ -6,7 +6,33 @@ const out = process.argv[2] ?? "./screenshots";
 const browser = await chromium.launch(
   process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {},
 );
-const page = await browser.newPage({ viewport: { width: 1440, height: 950 } });
+
+/**
+ * Only ever talk to the app under test. Left alone, every page load also
+ * reaches for Google's font CDN, which in a sandbox stalls until it times
+ * out — slowing the run to a crawl and filling the console with resets that
+ * have nothing to do with the code. Fonts fall back to the system stack,
+ * which is what a reader without the CDN would get anyway.
+ */
+const localOnly = async (target) => {
+  await target.route("**/*", (route) => {
+    const url = route.request().url();
+    const ours = url.startsWith(base) || url.startsWith("data:") || url.startsWith("blob:");
+    return ours ? route.continue() : route.abort();
+  });
+};
+
+const openContext = browser.newContext.bind(browser);
+browser.newContext = async (...args) => {
+  const context = await openContext(...args);
+  await localOnly(context);
+  return context;
+};
+
+const page = await (async () => {
+  const context = await browser.newContext({ viewport: { width: 1440, height: 950 } });
+  return context.newPage();
+})();
 const errors = [];
 page.on("pageerror", (e) => errors.push(`pageerror: ${e.message}`));
 page.on("console", (m) => m.type() === "error" && errors.push(`console: ${m.text()}`));
@@ -78,7 +104,12 @@ await step("vendor detail shows linked records and notes", async () => {
 await page.screenshot({ path: `${out}/04-vendor.png`, fullPage: true });
 
 await step("calendar renders the month grid", async () => {
-  await page.goto(`${base}/calendar`);
+  // the review is seeded two days out, which lands in next month when the
+  // run happens near a month end — so ask for the month it actually falls in
+  const when = new Date();
+  when.setDate(when.getDate() + 2);
+  const month = `${when.getFullYear()}-${String(when.getMonth() + 1).padStart(2, "0")}`;
+  await page.goto(`${base}/calendar?month=${month}`);
   await page.waitForSelector("text=Monthly operations review");
 });
 await page.screenshot({ path: `${out}/05-calendar.png`, fullPage: true });
