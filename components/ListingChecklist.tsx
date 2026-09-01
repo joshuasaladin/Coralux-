@@ -17,10 +17,25 @@ type Step = Record<string, any>;
 
 const EXTRAS = "Extra steps";
 
-export default function ListingChecklist({ listingId, steps }: { listingId: string; steps: Step[] }) {
+export default function ListingChecklist({
+  listingId,
+  steps,
+  title,
+  list,
+  blurb,
+  open = true,
+}: {
+  listingId: string;
+  steps: Step[];
+  title: string;
+  list: string;
+  blurb?: string;
+  open?: boolean;
+}) {
   const [state, addAction] = useActionState<ActionState, FormData>(addListingStepAction, null);
   const formRef = useRef<HTMLFormElement>(null);
   const done = steps.filter((s) => s.done).length;
+  const supplied = steps.filter((s) => s.coralux_supplied).length;
 
   // Keep the checklist in the order the server sent, grouped by its section.
   // Anything added by hand has no section and gathers at the end.
@@ -33,16 +48,23 @@ export default function ListingChecklist({ listingId, steps }: { listingId: stri
   }
 
   return (
-    <section className="panel">
-      <header
-        className="flex items-center justify-between px-4 py-3"
-        style={{ borderBottom: "1px solid var(--line)" }}
+    <details className="panel" open={open} style={{ overflow: "hidden" }}>
+      <summary
+        className="flex items-center gap-2 px-4 py-3 cursor-pointer select-none"
+        style={{ borderBottom: "1px solid var(--line)", listStyle: "none" }}
       >
-        <h2 className="text-sm font-semibold">Onboarding checklist</h2>
+        <h2 className="text-sm font-semibold flex-1">{title}</h2>
+        {supplied > 0 && <span className="chip chip-info">{supplied} we supply</span>}
         <span className="chip chip-muted">
           {done}/{steps.length}
         </span>
-      </header>
+      </summary>
+
+      {blurb && (
+        <p className="text-xs px-4 pt-3" style={{ color: "var(--ink-3)" }}>
+          {blurb}
+        </p>
+      )}
 
       {steps.length === 0 ? (
         <p className="text-sm p-4" style={{ color: "var(--ink-3)" }}>
@@ -69,10 +91,11 @@ export default function ListingChecklist({ listingId, steps }: { listingId: stri
           className="flex items-center gap-2"
         >
           <input type="hidden" name="__id" value={listingId} />
+          <input type="hidden" name="__list" value={list} />
           <input
             name="label"
             className="input"
-            placeholder="Add an extra step…"
+            placeholder="Add an extra item…"
             aria-label="Add a step"
           />
           <SubmitButton className="btn btn-sm" pendingLabel="Adding…">
@@ -86,7 +109,7 @@ export default function ListingChecklist({ listingId, steps }: { listingId: stri
           </p>
         )}
       </div>
-    </section>
+    </details>
   );
 }
 
@@ -144,6 +167,12 @@ function StepRow({ listingId, step, bordered }: { listingId: string; step: Step;
           >
             {step.label}
           </span>
+          {/* so an owner reading the list can see what is on us, not them */}
+          {Boolean(step.coralux_supplied) && (
+            <span className="chip chip-info ml-2" title="Coralux provides this — the owner does not buy it">
+              Coralux supplies
+            </span>
+          )}
           {Boolean(step.done) && step.done_at && (
             <span className="block text-xs" style={{ color: "var(--ink-3)" }}>
               checked {timeAgo(step.done_at)}

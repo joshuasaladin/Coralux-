@@ -346,6 +346,11 @@ await step("listings: seeded active listing shows 100% / Active", async () => {
   await card.locator("text=Active").waitFor();
 });
 
+/** The onboarding panel alone — a listing now carries a second checklist, so
+ * a page-wide selector would sweep up the inventory items too. */
+const onboarding = () =>
+  page.locator('details:has(> summary:has-text("Onboarding checklist"))').first();
+
 await step("listings: create a new listing auto-seeds the checklist", async () => {
   await page.goto(`${base}/listings/new`);
   await page.fill('#name', "Playwright Test Villa");
@@ -354,8 +359,8 @@ await step("listings: create a new listing auto-seeds the checklist", async () =
   await page.click('button:has-text("Create listing")');
   await page.waitForSelector("text=Onboarding checklist", { timeout: 15000 });
   await page.waitForSelector("text=Professional photos taken");
-  await page.locator('form button[aria-pressed]').first().waitFor({ timeout: 15000 });
-  const totalSteps = await page.locator('form button[aria-pressed]').count();
+  await onboarding().locator('form button[aria-pressed]').first().waitFor({ timeout: 15000 });
+  const totalSteps = await onboarding().locator('form button[aria-pressed]').count();
   if (totalSteps !== 114) throw new Error(`expected the full 114-step villa checklist, got ${totalSteps}`);
   for (const section of ["Owner & Property Setup", "Property Inspection", "Go Live"]) {
     if (await page.locator(`summary:has-text("${section}")`).count() === 0) {
@@ -378,34 +383,66 @@ await step("listings: checking off a step updates the counter", async () => {
 });
 
 await step("listings: add a custom step", async () => {
-  const addForm = page.locator("form", { has: page.locator('input[aria-label="Add a step"]') });
+  const addForm = onboarding().locator("form", { has: page.locator('input[aria-label="Add a step"]') });
   await addForm.locator('input[aria-label="Add a step"]').fill("Confirm insurance certificate on file");
   await addForm.locator('button[type="submit"]').click();
   await page.waitForSelector("text=Confirm insurance certificate on file", { timeout: 15000 });
+});
+
+await step("listings: a property carries both checklists", async () => {
+  for (const title of ["Onboarding checklist", "Inventory checklist"]) {
+    if (await page.locator(`summary:has-text("${title}")`).count() === 0) {
+      throw new Error(`missing the ${title}`);
+    }
+  }
+  // onboarding is open to work through; inventory folds away until wanted
+  const inv = page.locator('details:has(> summary:has-text("Inventory checklist"))').first();
+  if (await inv.evaluate((el) => el.open)) throw new Error("inventory should start collapsed");
+
+  await page.locator('summary:has-text("Inventory checklist")').click();
+  await page.waitForSelector('summary:has-text("Kitchen utensils")');
+  const count = await page.locator('summary:has-text("Inventory checklist") .chip-muted').innerText();
+  if (!count.endsWith("/96")) throw new Error(`inventory count reads ${count}`);
+});
+
+await step("listings: the items Coralux supplies are marked for the owner", async () => {
+  const badges = await page.locator('span:has-text("Coralux supplies")').count();
+  if (badges !== 9) throw new Error(`expected 9 supplied items, got ${badges}`);
+});
+
+await step("listings: status follows the onboarding list, not the inventory one", async () => {
+  // the figure should track the onboarding panel exactly — inventory items
+  // must not be swept into it (which would read well over 200)
+  const figure = await page.locator('div:has(> .eyebrow:text("Steps done"))').first().innerText();
+  const total = Number(figure.match(/\/(\d+)/)?.[1]);
+  const onboardingCount = await onboarding().locator('form button[aria-pressed]').count();
+  if (total !== onboardingCount) {
+    throw new Error(`steps-done reads ${figure} but the onboarding list holds ${onboardingCount}`);
+  }
 });
 
 await step("listings: the standard checklist cannot be pulled apart", async () => {
   // every one of the 114 template steps is fixed; only an extra step
   // somebody adds by hand carries a remove button. An earlier step in this
   // suite already added one, so compare against the count rather than zero.
-  const total = await page.locator('form button[aria-pressed]').count();
+  const total = await onboarding().locator('form button[aria-pressed]').count();
   const extras = total - 114;
-  const removable = await page.locator('button[title="Remove this extra step"]').count();
+  const removable = await onboarding().locator('button[title="Remove this extra step"]').count();
   if (removable !== extras) {
     throw new Error(`${removable} remove buttons for ${extras} extra steps (of ${total} total)`);
   }
 
   const label = `Extra check ${Date.now()}`;
-  const checklist = page.locator('section:has(h2:text("Onboarding checklist"))');
-  const addForm = page.locator("form", { has: page.locator('input[aria-label="Add a step"]') });
+  const checklist = onboarding();
+  const addForm = onboarding().locator("form", { has: page.locator('input[aria-label="Add a step"]') });
   await addForm.locator('input[aria-label="Add a step"]').fill(label);
   await addForm.locator('button[type="submit"]').click();
   await checklist.locator(`li:has-text("${label}")`).waitFor({ timeout: 15000 });
 
-  if (await page.locator('button[title="Remove this extra step"]').count() !== extras + 1) {
+  if (await onboarding().locator('button[title="Remove this extra step"]').count() !== extras + 1) {
     throw new Error("adding an extra step should add exactly one remove button");
   }
-  await page.locator('button[title="Remove this extra step"]').last().click();
+  await onboarding().locator('button[title="Remove this extra step"]').last().click();
   await page.waitForTimeout(1200);
   await page.reload();
   if (await checklist.locator(`li:has-text("${label}")`).count() !== 0) {
@@ -414,12 +451,12 @@ await step("listings: the standard checklist cannot be pulled apart", async () =
 });
 
 await step("listings: a note can be kept against a checklist item", async () => {
-  await page.locator('button:has-text("add a note")').first().click({ force: true });
-  const box = page.locator("textarea[aria-label]").first();
+  await onboarding().locator('button:has-text("add a note")').first().click({ force: true });
+  const box = onboarding().locator("textarea[aria-label]").first();
   await box.fill("Keybox code 4417 — spare with the owner.");
   await page.waitForTimeout(1200);
   await page.reload();
-  const saved = await page.locator("textarea[aria-label]").first().inputValue();
+  const saved = await onboarding().locator("textarea[aria-label]").first().inputValue();
   if (!saved.includes("4417")) throw new Error(`note did not persist, got "${saved}"`);
 });
 
@@ -430,17 +467,20 @@ await step("listings: checking every step flips status to Active automatically",
   const listingId = new URL(listingUrl).pathname.split("/").pop();
   const db = new Database("./data/coralux.db");
   const last = db.prepare(
-    `SELECT id FROM listing_steps WHERE listing_id = ? ORDER BY sort DESC, created_at DESC LIMIT 1`,
+    `SELECT id FROM listing_steps
+      WHERE listing_id = ? AND COALESCE(list, 'onboarding') = 'onboarding'
+      ORDER BY sort DESC, created_at DESC LIMIT 1`,
   ).get(listingId);
   db.prepare(
-    `UPDATE listing_steps SET done = 1, done_at = ? WHERE listing_id = ? AND id != ?`,
+    `UPDATE listing_steps SET done = 1, done_at = ?
+      WHERE listing_id = ? AND COALESCE(list, 'onboarding') = 'onboarding' AND id != ?`,
   ).run(new Date().toISOString(), listingId, last.id);
   db.close();
 
   await page.reload();
-  const remaining = page.locator('form button[aria-pressed="false"]');
+  const remaining = onboarding().locator('form button[aria-pressed="false"]');
   if (await remaining.count() !== 1) {
-    throw new Error(`expected exactly one step left, got ${await remaining.count()}`);
+    throw new Error(`expected exactly one onboarding step left, got ${await remaining.count()}`);
   }
   await remaining.first().click();
   await page.waitForTimeout(1200);
@@ -547,9 +587,14 @@ await step("cleaning schedule loads with weeks", async () => {
 await page.screenshot({ path: `${out}/61-cleaning-schedule.png`, fullPage: true });
 
 await step("past week is collapsed, current week is open", async () => {
+  // Run this on the 1st or 2nd of a month and the month's first week is the
+  // current one, so there is no past week yet — check it only when there is.
   const pastDetails = page.locator("details", { has: page.locator("text=past") });
-  const isPastOpen = await pastDetails.first().evaluate((el) => el.open);
-  if (isPastOpen) throw new Error("past week should be collapsed by default");
+  if (await pastDetails.count() > 0) {
+    if (await pastDetails.first().evaluate((el) => el.open)) {
+      throw new Error("past week should be collapsed by default");
+    }
+  }
 
   const currentDetails = page.locator("details", { has: page.locator("text=current") });
   const isCurrentOpen = await currentDetails.first().evaluate((el) => el.open);

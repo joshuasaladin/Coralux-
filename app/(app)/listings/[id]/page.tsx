@@ -8,7 +8,7 @@ import { Card, Chip, Detail, Lines, PageHeader } from "@/components/ui";
 import { atLeast } from "@/lib/auth";
 import { formatDate, relativeDay, timeAgo } from "@/lib/format";
 import { listActivity, listFilesFor, listNotes } from "@/lib/records";
-import { getListing, listSteps, platformLabel, statusLabel, statusTone, stepProgress } from "@/lib/listings";
+import { CHECKLISTS, getListing, listSteps, platformLabel, statusLabel, statusTone, stepProgress } from "@/lib/listings";
 import { requireSection } from "@/lib/permissions";
 
 export const dynamic = "force-dynamic";
@@ -23,7 +23,13 @@ export default async function ListingDetailPage({
   const listing = getListing(id);
   if (!listing) notFound();
 
-  const steps = listSteps(id);
+  // one panel per checklist: onboarding drives the listing's status, the
+  // inventory list is a readiness check that stands on its own
+  const checklists = CHECKLISTS.map((list) => ({
+    key: list.key,
+    label: list.label,
+    steps: listSteps(id, list.key),
+  }));
   const { done, total } = stepProgress(id);
   const notes = listNotes("listings", id);
   const files = listFilesFor("listings", id);
@@ -72,7 +78,21 @@ export default async function ListingDetailPage({
 
       <div className="grid lg:grid-cols-3 gap-5 items-start">
         <div className="lg:col-span-2 space-y-5">
-          <ListingChecklist listingId={id} steps={steps} />
+          {checklists.map((list, i) => (
+            <ListingChecklist
+              key={list.key}
+              listingId={id}
+              list={list.key}
+              title={list.label}
+              steps={list.steps}
+              open={i === 0}
+              blurb={
+                list.key === "inventory"
+                  ? "What the villa needs on the shelves. Items marked “Coralux supplies” are provided by us — everything else is the owner's to buy."
+                  : undefined
+              }
+            />
+          ))}
 
           <Card title="Details">
             <div className="grid sm:grid-cols-2 gap-x-6 gap-y-4">

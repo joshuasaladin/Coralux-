@@ -1,6 +1,6 @@
 import { all, id as newId, logActivity, now, one, run } from "./db";
 import type { User } from "./auth";
-import { ONBOARDING_STEPS } from "./onboarding-template";
+import { CHECKLISTS, STATUS_LIST } from "./onboarding-template";
 import { capture, recordDeletion } from "./undo";
 
 export type Listing = Record<string, any>;
@@ -11,7 +11,7 @@ export type ListingStep = Record<string, any>;
 // directly, since this module pulls in the (node-only) database layer.
 export { PLATFORM_OPTIONS, STATUS_OPTIONS, statusTone, statusLabel, platformLabel } from "./listing-options";
 
-export { ONBOARDING_TEMPLATE, ONBOARDING_STEPS } from "./onboarding-template";
+export { ONBOARDING_TEMPLATE, ONBOARDING_STEPS, CHECKLISTS, STATUS_LIST } from "./onboarding-template";
 
 export function listListings(): Listing[] {
   return all<Listing>(
@@ -19,7 +19,8 @@ export function listListings(): Listing[] {
             COUNT(s.id) AS step_total,
             COALESCE(SUM(s.done), 0) AS step_done
        FROM listings l
-       LEFT JOIN listing_steps s ON s.listing_id = l.id
+       LEFT JOIN listing_steps s
+              ON s.listing_id = l.id AND COALESCE(s.list, 'onboarding') = 'onboarding'
       GROUP BY l.id
       ORDER BY l.status = 'active', l.status = 'paused', l.created_at DESC`,
   );
@@ -29,17 +30,22 @@ export function getListing(id: string): Listing | undefined {
   return one<Listing>(`SELECT * FROM listings WHERE id = ?`, [id]);
 }
 
-export function listSteps(listingId: string): ListingStep[] {
+/** One listing's steps for a single checklist. Extra steps somebody added by
+ * hand carry no list of their own, so they stay with the onboarding list. */
+export function listSteps(listingId: string, list = STATUS_LIST): ListingStep[] {
   return all<ListingStep>(
-    `SELECT * FROM listing_steps WHERE listing_id = ? ORDER BY sort ASC, created_at ASC`,
-    [listingId],
+    `SELECT * FROM listing_steps
+      WHERE listing_id = ? AND COALESCE(list, 'onboarding') = ?
+      ORDER BY sort ASC, created_at ASC`,
+    [listingId, list],
   );
 }
 
-export function stepProgress(listingId: string): { done: number; total: number } {
+export function stepProgress(listingId: string, list = STATUS_LIST): { done: number; total: number } {
   const row = one<{ done: number; total: number }>(
-    `SELECT COALESCE(SUM(done), 0) AS done, COUNT(*) AS total FROM listing_steps WHERE listing_id = ?`,
-    [listingId],
+    `SELECT COALESCE(SUM(done), 0) AS done, COUNT(*) AS total
+       FROM listing_steps WHERE listing_id = ? AND COALESCE(list, 'onboarding') = ?`,
+    [listingId, list],
   );
   return { done: Number(row?.done ?? 0), total: Number(row?.total ?? 0) };
 }
@@ -78,15 +84,20 @@ export function createListing(form: FormData, user: User): string {
     ],
   );
 
-  ONBOARDING_STEPS.forEach((step, index) => {
-    run(
-      `INSERT INTO listing_steps (id, listing_id, label, section, sort, done, created_at)
-       VALUES (?, ?, ?, ?, ?, 0, ?)`,
-      [newId(), listingId, step.label, step.section, index, now()],
-    );
-  });
+  let sort = 0;
+  for (const list of CHECKLISTS) {
+    for (const step of list.steps) {
+      run(
+        `INSERT INTO listing_steps (id, listing_id, label, list, section, coralux_supplied, sort, done, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)`,
+        [newId(), listingId, step.label, list.key, step.section, step.coralux ? 1 : 0, sort, now()],
+      );
+      sort += 1;
+    }
+  }
 
-  logActivity("listings", listingId, "created", `Listing created with a ${ONBOARDING_STEPS.length}-step checklist`, user.id);
+  const onboarding = CHECKLISTS.find((l) => l.key === STATUS_LIST)?.steps.length ?? 0;
+  logActivity("listings", listingId, "created", `Listing created with a ${onboarding}-step checklist`, user.id);
   return listingId;
 }
 
@@ -155,7 +166,7 @@ export function toggleStep(stepId: string, user: User): void {
   syncListingStatus(step.listing_id, user);
 }
 
-export function addStep(listingId: string, label: string, user: User): void {
+export function addStep(listingId: string, label: string, user: User, list = STATUS_LIST): void {
   const trimmed = label.trim();
   if (!trimmed) return;
   const row = one<{ next: number }>(
@@ -163,8 +174,9 @@ export function addStep(listingId: string, label: string, user: User): void {
     [listingId],
   );
   run(
-    `INSERT INTO listing_steps (id, listing_id, label, sort, done, created_at) VALUES (?, ?, ?, ?, 0, ?)`,
-    [newId(), listingId, trimmed, row?.next ?? 0, now()],
+    `INSERT INTO listing_steps (id, listing_id, label, list, sort, done, created_at)
+     VALUES (?, ?, ?, ?, ?, 0, ?)`,
+    [newId(), listingId, trimmed, list, row?.next ?? 0, now()],
   );
   logActivity("listings", listingId, "checklist", `Added step "${trimmed}"`, user.id);
   syncListingStatus(listingId, user);

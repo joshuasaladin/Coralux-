@@ -208,3 +208,37 @@ export const RETIRED_DEFAULT_STEPS: string[] = [
   "Payout / banking details configured",
   "Listing published & live",
 ];
+
+// --------------------------------------------------------------- the two lists
+
+import { INVENTORY_STEPS } from "./inventory-template";
+
+/**
+ * Every checklist a property carries. Each one is its own list on the page,
+ * with its own sections and its own progress — the onboarding list is what
+ * decides whether a listing is live, the inventory list is a readiness check
+ * that stands on its own.
+ */
+export type ChecklistStep = {
+  section: string;
+  label: string;
+  /** Supplied by Coralux rather than the owner. */
+  coralux: boolean;
+};
+
+export const CHECKLISTS: { key: string; label: string; steps: ChecklistStep[] }[] = [
+  {
+    key: "onboarding",
+    label: "Onboarding checklist",
+    steps: ONBOARDING_STEPS.map((s) => ({ ...s, coralux: false })),
+  },
+  {
+    key: "inventory",
+    label: "Inventory checklist",
+    steps: INVENTORY_STEPS,
+  },
+];
+
+/** The list a listing's status follows. The inventory list deliberately does
+ * not gate going live — a villa is not held back by missing snorkel gear. */
+export const STATUS_LIST = "onboarding";

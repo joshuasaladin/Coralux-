@@ -497,8 +497,9 @@ export async function addListingStepAction(
   if (!canAccessSection(user, "listings")) return { error: "Not permitted." };
   const listingId = String(form.get("__id") ?? "");
   const label = String(form.get("label") ?? "");
+  const list = String(form.get("__list") ?? "onboarding");
   if (!label.trim()) return { error: "Write the step first." };
-  addStep(listingId, label, user);
+  addStep(listingId, label, user, list);
   revalidatePath(`/listings/${listingId}`);
   revalidatePath("/listings");
   return { ok: "Step added." };
