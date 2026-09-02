@@ -1108,19 +1108,27 @@ export const NAV = ALL_NAV.map((group) => ({
 })).filter((group) => group.items.length > 0);
 
 /**
- * Every section that can have its own minimum role, for the Admin "who can
- * access what" editor. Dashboard, Calendar and Admin itself stay fixed —
- * always open to any signed-in user (Admin always requires admin+) — so
- * nobody can accidentally lock everyone out of the app or the settings that
- * would fix it.
+ * Every section an admin can hand out, for the "who can access what" editor.
+ *
+ * Dashboard and Calendar are in here too: a cleaner has no use for either,
+ * and should land straight on the cleaning schedule. Only Admin itself stays
+ * out, so nobody can lock everyone out of the settings that would fix it —
+ * and owners keep everything regardless.
  */
 export type PermissionSection = { key: string; label: string; group: string; defaultRole: Role };
 
+/** The key a section is known by everywhere permissions are checked. The
+ * dashboard lives at "/" and would otherwise have an empty one. */
+export function navKey(item: { href: string; entity?: EntityKey }): string {
+  if (item.entity) return item.entity;
+  return item.href.replace(/^\//, "") || "overview";
+}
+
 export const PERMISSION_SECTIONS: PermissionSection[] = ALL_NAV.flatMap((group) =>
   group.items
-    .filter((item) => item.href !== "/" && item.href !== "/calendar" && item.href !== "/admin")
+    .filter((item) => item.href !== "/admin")
     .map((item) => ({
-      key: item.entity ?? item.href.replace(/^\//, ""),
+      key: navKey(item),
       label: item.label,
       group: group.group,
       defaultRole: item.minRole ?? ("staff" as Role),

@@ -299,3 +299,40 @@ export function availableYears(): number[] {
   if (!years.includes(current)) years.unshift(current);
   return years;
 }
+
+// ------------------------------------------------------------- cleaners' view
+
+/** Every cleaning shift booked for today, earliest first. */
+export function todaysCleaning() {
+  const now = new Date();
+  const sunday = new Date(now);
+  sunday.setDate(now.getDate() - now.getDay());
+  const weekStart = sunday.toISOString().slice(0, 10);
+  return all<Row>(
+    `SELECT * FROM cleaning_shifts
+      WHERE week_start = ? AND day_of_week = ?
+        AND (COALESCE(listing, '') != '' OR COALESCE(notes, '') != '')
+      ORDER BY time_slot ASC`,
+    [weekStart, now.getDay()],
+  );
+}
+
+/** Supplies that have run out or dipped under their reorder point. */
+export function lowStock(limit = 8) {
+  return all<Row>(
+    `SELECT * FROM inventory
+      WHERE status IN ('low', 'out')
+      ORDER BY status = 'out' DESC, name ASC
+      LIMIT ?`,
+    [limit],
+  );
+}
+
+/** Every property with somewhere to go, for the cleaners' round. */
+export function propertyDirectory() {
+  return all<Row>(
+    `SELECT id, name, address, status FROM listings
+      WHERE status != 'paused'
+      ORDER BY name ASC`,
+  );
+}

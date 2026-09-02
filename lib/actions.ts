@@ -394,6 +394,24 @@ export async function deleteUserAction(
   return { ok: `${target.name}'s account has been deleted.` };
 }
 
+/** The code that opens every property's lock for one person. Saved as you
+ * type, like everything else here. */
+export async function setDoorCodeAction(
+  targetId: string,
+  code: string,
+): Promise<{ error?: string }> {
+  const user = await requireUser();
+  if (!atLeast(user.role, "admin")) return { error: "Admins only." };
+  run(`UPDATE users SET door_code = ?, updated_at = ? WHERE id = ?`, [
+    code.trim() || null,
+    now(),
+    targetId,
+  ]);
+  revalidatePath("/admin");
+  revalidatePath("/", "layout");
+  return {};
+}
+
 export async function saveSettingAction(form: FormData) {
   const user = await requireUser();
   if (!atLeast(user.role, "admin")) return;

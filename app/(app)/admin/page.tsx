@@ -28,6 +28,7 @@ export default async function AdminPage() {
     keys: access[u.id]!.keys,
     roleDefaultKeys: access[u.id]!.roleDefaultKeys,
     self: u.id === user.id,
+    doorCode: (u as { door_code?: string | null }).door_code ?? null,
   }));
 
   const counts = ENTITY_KEYS.map((key) => {

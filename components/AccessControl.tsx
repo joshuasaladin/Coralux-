@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import Icon from "./Icon";
-import { updateUserAccessAction } from "@/lib/actions";
+import { setDoorCodeAction, updateUserAccessAction } from "@/lib/actions";
 import type { Role } from "@/lib/roles";
 import type { PermissionSection } from "@/lib/permissions";
 
@@ -19,6 +19,8 @@ export type AccessPerson = {
   roleDefaultKeys: string[];
   /** The signed-in admin's own row — deliberately not editable. */
   self: boolean;
+  /** The code this person uses to open the properties. */
+  doorCode: string | null;
 };
 
 /**
@@ -52,9 +54,10 @@ export default function AccessControl({
         />
       ))}
       <p className="text-xs px-4 py-3" style={{ color: "var(--ink-3)" }}>
-        Dashboard and Calendar stay open to everyone who can sign in, and Admin always needs an
-        admin account — so nobody can be locked out of the settings that would undo a mistake.
-        Owners always have everything.
+        Untick Dashboard and a person lands straight on the first section they do have — a
+        cleaner opens the app on the cleaning schedule. Admin always needs an admin account, so
+        nobody can be locked out of the settings that would undo a mistake, and owners always
+        have everything.
       </p>
     </div>
   );
@@ -177,6 +180,13 @@ function PersonRow({
                 </span>
               </div>
 
+              <div className="mb-3">
+                <label className="label" htmlFor={`door-${person.id}`}>
+                  Door code
+                </label>
+                <DoorCode person={person} />
+              </div>
+
               <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-1">
                 {[...groups.entries()].map(([group, items]) => (
                   <div key={group} className="mb-2">
@@ -204,6 +214,44 @@ function PersonRow({
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+/** One person's door code. Saves shortly after you stop typing. */
+function DoorCode({ person }: { person: AccessPerson }) {
+  const [code, setCode] = useState(person.doorCode ?? "");
+  const [saved, setSaved] = useState(false);
+  const [, startTransition] = useTransition();
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
+
+  return (
+    <div className="flex items-center gap-2">
+      <input
+        id={`door-${person.id}`}
+        className="input"
+        style={{ maxWidth: 200 }}
+        placeholder="e.g. 4417"
+        aria-label={`Door code for ${person.name}`}
+        value={code}
+        onChange={(e) => {
+          setCode(e.target.value);
+          setSaved(false);
+          if (timer.current) clearTimeout(timer.current);
+          const next = e.target.value;
+          timer.current = setTimeout(() => {
+            startTransition(async () => {
+              await setDoorCodeAction(person.id, next);
+              setSaved(true);
+            });
+          }, 600);
+        }}
+      />
+      <span className="text-xs" style={{ color: "var(--ink-3)" }}>
+        {saved ? "saved" : "opens every property"}
+      </span>
     </div>
   );
 }

@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { all, one, run } from "./db";
 import { atLeast, requireUser, type User } from "./auth";
-import { isEnabled, isPageEnabled, PERMISSION_SECTIONS, type PermissionSection } from "./entities";
+import { isEnabled, isPageEnabled, NAV, navKey, PERMISSION_SECTIONS, type PermissionSection } from "./entities";
 import type { Role } from "./roles";
 
 export { PERMISSION_SECTIONS, type PermissionSection };
@@ -38,9 +38,15 @@ function roleDefaultFor(key: string, fallback?: Role): Role {
   return PERMISSION_SECTIONS.find((s) => s.key === key)?.defaultRole ?? "staff";
 }
 
-/** The sections an admin is allowed to hand out one by one. Dashboard,
- * Calendar and Admin are deliberately not among them. */
-const CONFIGURABLE = new Set(PERMISSION_SECTIONS.map((s) => s.key));
+/**
+ * Admin is the one section a custom list can never take away, so an admin
+ * whose sections were picked for them keeps the page that could put it back.
+ *
+ * Everything else answers to the list — including sections with no nav entry
+ * of their own, like the events behind the calendar. Letting those fall back
+ * to the role would quietly hand a cleaner the whole diary.
+ */
+const ALWAYS_BY_ROLE = new Set(["admin"]);
 
 /**
  * Whether this person may open a section. Owners always may; a customised
@@ -52,10 +58,7 @@ export function canAccessSection(user: Accessor, key: string, fallback?: Role): 
   if (user.role === "owner") return true;
   const min = roleDefaultFor(key, fallback);
 
-  // Dashboard, Calendar and Admin are never handed out by hand, so a custom
-  // list must not silently take them away — an admin who had their sections
-  // picked for them would otherwise lose the Admin page itself.
-  if (!CONFIGURABLE.has(key)) return atLeast(user.role, min);
+  if (ALWAYS_BY_ROLE.has(key)) return atLeast(user.role, min);
 
   const custom = customSectionsFor(user.id);
   if (custom) return custom.has(key);
@@ -70,8 +73,27 @@ export function canAccessSection(user: Accessor, key: string, fallback?: Role): 
  * titles through the front page.
  */
 export function canSeeSection(user: Accessor, key: string): boolean {
-  if (!isEnabled(key) && !isPageEnabled(`/${key}`)) return false;
+  // the dashboard is the one section whose key is not its path
+  const switchedOn = key === "overview" ? isPageEnabled("/") : isEnabled(key) || isPageEnabled(`/${key}`);
+  if (!switchedOn) return false;
   return canAccessSection(user, key);
+}
+
+/**
+ * Where to send somebody after they sign in, or when they land on a page they
+ * cannot open. Usually the dashboard; for someone given only the cleaning
+ * schedule, the cleaning schedule. null means they have been given nothing at
+ * all, which the dashboard explains rather than bouncing them in a loop.
+ */
+export function landingPath(user: Accessor): string | null {
+  if (canAccessSection(user, "overview")) return "/";
+  for (const group of NAV) {
+    for (const item of group.items) {
+      if (item.href === "/") continue;
+      if (canAccessSection(user, navKey(item), item.minRole ?? "staff")) return item.href;
+    }
+  }
+  return null;
 }
 
 /** The section a link points at — "/tasks/abc?status=todo" -> "tasks". */

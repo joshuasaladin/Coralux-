@@ -1,7 +1,8 @@
 import Link from "next/link";
 import Icon from "@/components/Icon";
 import { Card, PageHeader } from "@/components/ui";
-import { atLeast, requireUser } from "@/lib/auth";
+import { atLeast } from "@/lib/auth";
+import { requireSection } from "@/lib/permissions";
 import { all } from "@/lib/db";
 import { isEnabled } from "@/lib/entities";
 import { formatTime } from "@/lib/time-options";
@@ -27,7 +28,7 @@ export default async function CalendarPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const user = await requireUser();
+  const user = await requireSection("calendar", "staff");
   const query = await searchParams;
 
   const today = new Date();

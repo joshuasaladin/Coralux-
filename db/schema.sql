@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS users (
   password_hash TEXT NOT NULL,
   status        TEXT NOT NULL DEFAULT 'active',
   employee_id   TEXT,
+  door_code     TEXT,                            -- opens every property's lock
   created_at    TEXT NOT NULL,
   updated_at    TEXT NOT NULL
 );

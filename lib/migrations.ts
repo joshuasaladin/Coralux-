@@ -22,6 +22,9 @@ function columnNames(db: Database.Database, table: string): Set<string> {
 }
 
 function addMissingColumns(db: Database.Database) {
+  if (!columnNames(db, "users").has("door_code")) {
+    db.exec(`ALTER TABLE users ADD COLUMN door_code TEXT`);
+  }
   const steps = columnNames(db, "listing_steps");
   if (!steps.has("section")) db.exec(`ALTER TABLE listing_steps ADD COLUMN section TEXT`);
   if (!steps.has("note")) db.exec(`ALTER TABLE listing_steps ADD COLUMN note TEXT`);

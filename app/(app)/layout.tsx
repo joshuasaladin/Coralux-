@@ -1,6 +1,6 @@
 import Shell from "@/components/Shell";
 import { requireUser } from "@/lib/auth";
-import { NAV } from "@/lib/entities";
+import { NAV, navKey } from "@/lib/entities";
 import { customLogo } from "@/lib/branding";
 import { canAccessSection } from "@/lib/permissions";
 import { pendingUndo } from "@/lib/actions";
@@ -13,8 +13,7 @@ export default async function AppLayout({
   const nav = NAV.map((group) => ({
     ...group,
     items: group.items.filter((item) => {
-      const key = item.entity ?? item.href.replace(/^\//, "");
-      return canAccessSection(user, key, item.minRole ?? "staff");
+      return canAccessSection(user, navKey(item), item.minRole ?? "staff");
     }),
   })).filter((group) => group.items.length > 0);
 

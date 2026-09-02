@@ -14,6 +14,8 @@ export type User = {
   role: Role;
   status: string;
   employee_id: string | null;
+  /** Opens every property's lock. Shown to the person it belongs to. */
+  door_code: string | null;
 };
 
 const COOKIE = "coralux_session";
@@ -65,7 +67,7 @@ export async function currentUser(): Promise<User | null> {
   if (!token) return null;
 
   const row = one<User & { expires_at: string }>(
-    `SELECT u.id, u.email, u.name, u.role, u.status, u.employee_id, s.expires_at
+    `SELECT u.id, u.email, u.name, u.role, u.status, u.employee_id, u.door_code, s.expires_at
        FROM sessions s JOIN users u ON u.id = s.user_id
       WHERE s.token = ?`,
     [token],
@@ -83,6 +85,7 @@ export async function currentUser(): Promise<User | null> {
     role: row.role,
     status: row.status,
     employee_id: row.employee_id,
+    door_code: row.door_code,
   };
 }
 
@@ -98,7 +101,7 @@ export async function requireUser(): Promise<User> {
 
 export function listUsers() {
   return all<User & { created_at: string }>(
-    `SELECT id, email, name, role, status, employee_id, created_at
+    `SELECT id, email, name, role, status, employee_id, door_code, created_at
        FROM users ORDER BY name`,
   );
 }

@@ -843,6 +843,78 @@ await step("admin: reset that person back to role defaults", async () => {
   await ctx.close();
 });
 
+await step("admin: Dashboard and Calendar can be handed out too", async () => {
+  await page.goto(`${base}/admin`);
+  await page.waitForSelector("text=Access control");
+  await page.click('button:has-text("Dwight Tromp")');
+  await page.waitForSelector("text=Select all");
+  for (const label of ["Dashboard", "Calendar"]) {
+    if (await page.locator(`input[aria-label="Dwight Tromp — ${label}"]`).count() === 0) {
+      throw new Error(`${label} is not offered in the access editor`);
+    }
+  }
+});
+
+await step("a cleaner gets a dashboard built from what they can see", async () => {
+  // exactly the case this exists for: cleaning schedule, inventory, nothing else
+  await page.click('button:has-text("Clear all")');
+  await page.waitForTimeout(700);
+  for (const label of ["Cleaning Schedule", "Inventory", "Dashboard"]) {
+    await page.click(`input[aria-label="Dwight Tromp — ${label}"]`);
+    await page.waitForTimeout(600);
+  }
+  await page.fill('input[aria-label="Door code for Dwight Tromp"]', "4417");
+  await page.waitForTimeout(1500);
+
+  const ctx = await browser.newContext();
+  const cp = await ctx.newPage();
+  await cp.goto(`${base}/login`);
+  await cp.fill('input[name="email"]', "dwight@coralux.aw");
+  await cp.fill('input[name="password"]', "coralux2026");
+  await cp.click('button[type="submit"]');
+  await cp.waitForURL(`${base}/`, { timeout: 15000 });
+
+  await cp.waitForSelector("text=Your door code");
+  if (await cp.locator("text=4417").count() === 0) throw new Error("door code not shown");
+  for (const card of ["Cleaning today", "Running low", "Properties"]) {
+    if (await cp.locator(`text=${card}`).count() === 0) throw new Error(`missing card: ${card}`);
+  }
+  // and none of the management cards they have no part in
+  for (const hidden of ["Needs attention", "Next three weeks"]) {
+    if (await cp.locator(`h2:has-text("${hidden}")`).count() > 0) {
+      throw new Error(`${hidden} should not be on a cleaner's dashboard`);
+    }
+  }
+  const res = await cp.goto(`${base}/calendar`);
+  if (res.status() !== 404) throw new Error(`calendar should be shut, got ${res.status()}`);
+  await ctx.close();
+});
+
+await step("without a dashboard they land on their first section instead", async () => {
+  await page.goto(`${base}/admin`);
+  await page.click('button:has-text("Dwight Tromp")');
+  await page.waitForSelector("text=Select all");
+  await page.click('input[aria-label="Dwight Tromp — Dashboard"]');
+  await page.waitForTimeout(1500);
+
+  const ctx = await browser.newContext();
+  const cp = await ctx.newPage();
+  await cp.goto(`${base}/login`);
+  await cp.fill('input[name="email"]', "dwight@coralux.aw");
+  await cp.fill('input[name="password"]', "coralux2026");
+  await cp.click('button[type="submit"]');
+  await cp.waitForURL(`${base}/cleaning`, { timeout: 15000 });
+  await cp.waitForSelector("text=Week of");
+  await ctx.close();
+
+  // hand him back his defaults for whatever runs after this
+  await page.goto(`${base}/admin`);
+  await page.click('button:has-text("Dwight Tromp")');
+  await page.waitForSelector('button:has-text("Reset to role defaults")');
+  await page.click('button:has-text("Reset to role defaults")');
+  await page.waitForTimeout(1200);
+});
+
 await step("owner's own row is shown as always having everything", async () => {
   // the seeded admin@coralux.aw account is an owner, so its row explains
   // that rather than the self-edit rule
