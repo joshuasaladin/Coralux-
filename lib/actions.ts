@@ -31,6 +31,15 @@ import {
   updateListing,
 } from "./listings";
 import { clearShift, upsertShift } from "./cleaning";
+import {
+  addFact,
+  createProperty,
+  deleteFact,
+  deleteProperty,
+  setFact,
+  setFactVisibility,
+  updateProperty,
+} from "./properties";
 import { canAccessSection, clearUserSections, setUserSections } from "./permissions";
 import { capture, latestUndoable, recordDeletion, undoDeletion } from "./undo";
 
@@ -621,4 +630,106 @@ export async function undoDeleteAction(deletionId: string): Promise<{ error?: st
   // guess which list the row belongs back in
   revalidatePath("/", "layout");
   return { ok: `${result.label} is back.` };
+}
+
+// ----------------------------------------------------------------- properties
+//
+// Viewing a property is open to anyone given the section — a cleaner needs the
+// codes. Changing one is not: these all require a manager.
+
+async function managerFor(section: string) {
+  const user = await requireUser();
+  if (!canAccessSection(user, section)) return { error: "Not permitted." as const };
+  if (!atLeast(user.role, "manager")) return { error: "Managers only." as const };
+  return { user };
+}
+
+export async function createPropertyAction(
+  _prev: ActionState,
+  form: FormData,
+): Promise<ActionState> {
+  const gate = await managerFor("properties");
+  if ("error" in gate) return { error: gate.error };
+
+  let propertyId: string;
+  try {
+    propertyId = createProperty(form, gate.user);
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Could not save." };
+  }
+  revalidatePath("/properties");
+  redirect(`/properties/${propertyId}`);
+}
+
+export async function updatePropertyAction(
+  _prev: ActionState,
+  form: FormData,
+): Promise<ActionState> {
+  const gate = await managerFor("properties");
+  if ("error" in gate) return { error: gate.error };
+
+  const propertyId = String(form.get("__id") ?? "");
+  try {
+    updateProperty(propertyId, form, gate.user);
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Could not save." };
+  }
+  revalidatePath("/properties");
+  revalidatePath(`/properties/${propertyId}`);
+  redirect(`/properties/${propertyId}`);
+}
+
+export async function deletePropertyAction(form: FormData) {
+  const gate = await managerFor("properties");
+  if ("error" in gate) return;
+  deleteProperty(String(form.get("__id") ?? ""), gate.user);
+  revalidatePath("/properties");
+  redirect("/properties");
+}
+
+export async function addPropertyFactAction(
+  _prev: ActionState,
+  form: FormData,
+): Promise<ActionState> {
+  const gate = await managerFor("properties");
+  if ("error" in gate) return { error: gate.error };
+
+  const propertyId = String(form.get("__id") ?? "");
+  const label = String(form.get("label") ?? "");
+  if (!label.trim()) return { error: "Give it a name first." };
+  addFact(propertyId, label, gate.user);
+  revalidatePath(`/properties/${propertyId}`);
+  return { ok: "Added." };
+}
+
+export async function setPropertyFactAction(
+  propertyId: string,
+  factId: string,
+  patch: { label?: string; value?: string },
+): Promise<{ error?: string }> {
+  const gate = await managerFor("properties");
+  if ("error" in gate) return { error: gate.error };
+  setFact(factId, patch);
+  revalidatePath(`/properties/${propertyId}`);
+  return {};
+}
+
+export async function setPropertyFactVisibilityAction(
+  propertyId: string,
+  factId: string,
+  visible: boolean,
+): Promise<{ error?: string }> {
+  const gate = await managerFor("properties");
+  if ("error" in gate) return { error: gate.error };
+  setFactVisibility(factId, visible);
+  revalidatePath(`/properties/${propertyId}`);
+  return {};
+}
+
+export async function deletePropertyFactAction(form: FormData) {
+  const gate = await managerFor("properties");
+  if ("error" in gate) return;
+  const propertyId = String(form.get("__id") ?? "");
+  deleteFact(String(form.get("fact_id") ?? ""), gate.user);
+  revalidatePath(`/properties/${propertyId}`);
 }

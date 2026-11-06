@@ -122,8 +122,49 @@ export function seedIfEmpty(db: Database.Database) {
       [prop.malmok, "Malmok Cliff Villa", "Malmok 12A", "Blue Horizon Ltd", 1],
       [prop.oranje, "Oranjestad Lofts", "Wilhelminastraat 63, Oranjestad", "Coralux NV", 6],
     ];
+    // codes and Wi-Fi are what a cleaner standing at the door actually needs
+    const access: Record<string, { door: string; lockbox: string; wifi: string; pass: string; parking: string }> = {
+      [prop.palm]: { door: "4417", lockbox: "2290", wifi: "CoralBay-Guest", pass: "coralbay2026", parking: "Two spots in the carport" },
+      [prop.eagle]: { door: "1188", lockbox: "7731", wifi: "EagleBeach-Guest", pass: "eagle!2026", parking: "Visitor bays by the gate" },
+      [prop.noord]: { door: "9042", lockbox: "3318", wifi: "NoordVillas", pass: "noordgarden", parking: "Driveway, do not block the gate" },
+      [prop.savaneta]: { door: "6625", lockbox: "1407", wifi: "SavanetaBeach", pass: "seaside2026", parking: "On the street, left side only" },
+      [prop.malmok]: { door: "3351", lockbox: "8890", wifi: "MalmokCliff", pass: "cliffside26", parking: "Garage, remote in the key box" },
+      [prop.oranje]: { door: "7704", lockbox: "5523", wifi: "OranjestadLofts", pass: "lofts2026", parking: "Underground, level -1" },
+    };
+    const owners: Record<string, { email: string; phone: string }> = {
+      [prop.palm]: { email: "r.henriquez@gmail.com", phone: "+297 594 1122" },
+      [prop.eagle]: { email: "info@sunriseholdings.aw", phone: "+297 583 7788" },
+      [prop.noord]: { email: "mvandijk@outlook.com", phone: "+31 6 2244 8890" },
+      [prop.savaneta]: { email: "p.arends@setarnet.aw", phone: "+297 593 4410" },
+      [prop.malmok]: { email: "owners@bluehorizon.aw", phone: "+297 586 2200" },
+      [prop.oranje]: { email: "admin@coralux.aw", phone: "+297 560 1120" },
+    };
     for (const [pid, name, address, ownerName, units] of props) {
-      insert("properties", stamped({ id: pid, name, address, owner_name: ownerName, units, status: "active" }));
+      const a = access[pid]!;
+      insert("properties", stamped({
+        id: pid, name, address, owner_name: ownerName, units, status: "active",
+        door_code: a.door, lockbox_code: a.lockbox, wifi_name: a.wifi,
+        wifi_password: a.pass, parking: a.parking,
+        owner_email: owners[pid]!.email, owner_phone: owners[pid]!.phone,
+      }));
+    }
+
+    // the sort of thing that otherwise lives in somebody's head
+    const facts: [string, string, string, number][] = [
+      [prop.palm, "Garbage collection", "Tuesday and Friday, out the night before", 1],
+      [prop.palm, "Pool service", "Wednesdays, ABC Pool Services", 1],
+      [prop.palm, "Pest control", "Monthly, first Monday", 1],
+      [prop.palm, "Owner payout day", "5th of the month", 0],
+      [prop.eagle, "Garbage collection", "Monday and Thursday", 1],
+      [prop.eagle, "Pool service", "Tuesdays and Fridays", 1],
+      [prop.malmok, "Garbage collection", "Wednesday mornings", 1],
+      [prop.malmok, "Gardener", "Every other Monday", 1],
+    ];
+    for (const [pid, label, value, visible] of facts) {
+      insert("property_facts", {
+        id: uid(), property_id: pid, label, value, staff_visible: visible,
+        sort: 0, created_at: ts,
+      });
     }
 
     // --------------------------------------------------------------- vendors

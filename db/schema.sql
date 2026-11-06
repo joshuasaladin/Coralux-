@@ -26,16 +26,41 @@ CREATE TABLE IF NOT EXISTS sessions (
 );
 
 CREATE TABLE IF NOT EXISTS properties (
-  id         TEXT PRIMARY KEY,
-  name       TEXT NOT NULL,
-  address    TEXT,
-  owner_name TEXT,
-  units      INTEGER DEFAULT 1,
-  status     TEXT DEFAULT 'active',
-  notes      TEXT,
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
+  id            TEXT PRIMARY KEY,
+  name          TEXT NOT NULL,
+  address       TEXT,
+  owner_name    TEXT,
+  units         INTEGER DEFAULT 1,
+  status        TEXT DEFAULT 'active',
+  notes         TEXT,
+  -- what somebody standing at the door needs
+  door_code     TEXT,
+  lockbox_code  TEXT,
+  alarm_code    TEXT,
+  wifi_name     TEXT,
+  wifi_password TEXT,
+  parking       TEXT,
+  access_notes  TEXT,
+  -- the owner's side, kept away from staff
+  owner_email   TEXT,
+  owner_phone   TEXT,
+  created_at    TEXT NOT NULL,
+  updated_at    TEXT NOT NULL
 );
+
+-- Anything else worth keeping against a property, in the words of whoever
+-- keeps it: when the garbage goes out, how often pest control comes, which
+-- day the pool is done. staff_visible decides whether the cleaners see it.
+CREATE TABLE IF NOT EXISTS property_facts (
+  id            TEXT PRIMARY KEY,
+  property_id   TEXT NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
+  label         TEXT NOT NULL,
+  value         TEXT,
+  staff_visible INTEGER NOT NULL DEFAULT 1,
+  sort          INTEGER NOT NULL DEFAULT 0,
+  created_at    TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_property_facts_property ON property_facts(property_id);
 
 CREATE TABLE IF NOT EXISTS employees (
   id                TEXT PRIMARY KEY,

@@ -12,6 +12,7 @@ import { CHECKLISTS, RETIRED_DEFAULT_STEPS } from "./onboarding-template";
  */
 export function migrate(db: Database.Database) {
   addMissingColumns(db);
+  purgeUnusedSections(db);
   backfillChecklists(db);
   syncInventoryStatuses(db);
 }
@@ -25,6 +26,15 @@ function addMissingColumns(db: Database.Database) {
   if (!columnNames(db, "users").has("door_code")) {
     db.exec(`ALTER TABLE users ADD COLUMN door_code TEXT`);
   }
+  const props = columnNames(db, "properties");
+  for (const [col, type] of [
+    ["door_code", "TEXT"], ["lockbox_code", "TEXT"], ["alarm_code", "TEXT"],
+    ["wifi_name", "TEXT"], ["wifi_password", "TEXT"], ["parking", "TEXT"],
+    ["access_notes", "TEXT"], ["owner_email", "TEXT"], ["owner_phone", "TEXT"],
+  ] as const) {
+    if (!props.has(col)) db.exec(`ALTER TABLE properties ADD COLUMN ${col} ${type}`);
+  }
+
   const steps = columnNames(db, "listing_steps");
   if (!steps.has("section")) db.exec(`ALTER TABLE listing_steps ADD COLUMN section TEXT`);
   if (!steps.has("note")) db.exec(`ALTER TABLE listing_steps ADD COLUMN note TEXT`);
@@ -130,6 +140,50 @@ function backfillChecklists(db: Database.Database) {
     }
   });
   run();
+}
+
+/**
+ * Empty the tables for sections that are not switched on.
+ *
+ * None of them can be reached through the app, so anything sitting in them is
+ * leftover demo data cluttering the counts in Admin. The tables themselves
+ * stay: they cost nothing empty, and switching one of these sections on later
+ * is still a one-line change rather than a rebuild.
+ */
+const UNUSED_TABLES = [
+  "projects", "requests", "invoices", "payments", "payouts",
+  "recurring_expenses", "contracts", "time_off", "contacts", "assets",
+  "sops", "meetings",
+];
+
+/** What those tables are called where notes, files and history point at them. */
+const UNUSED_ENTITIES = [
+  "projects", "requests", "invoices", "payments", "payouts",
+  "recurring", "contracts", "timeoff", "contacts", "assets",
+  "sops", "meetings",
+];
+
+function purgeUnusedSections(db: Database.Database) {
+  const run = db.transaction(() => {
+    for (const table of UNUSED_TABLES) {
+      try {
+        db.prepare(`DELETE FROM ${table}`).run();
+      } catch {
+        /* table not there on an older database — nothing to clear */
+      }
+    }
+    const placeholders = UNUSED_ENTITIES.map(() => "?").join(", ");
+    for (const side of ["notes", "file_links", "activity"]) {
+      db.prepare(`DELETE FROM ${side} WHERE entity IN (${placeholders})`).run(...UNUSED_ENTITIES);
+    }
+  });
+  run();
+  // the space those rows held goes back to the operating system
+  try {
+    db.exec("VACUUM");
+  } catch {
+    /* vacuum is a nicety, not worth failing a boot over */
+  }
 }
 
 /**

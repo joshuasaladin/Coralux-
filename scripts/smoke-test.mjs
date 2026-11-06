@@ -331,6 +331,93 @@ await step("admin: cannot delete own account (no delete button on self row)", as
   if (count !== 0) throw new Error("delete button should not appear on the signed-in user's own row");
 });
 
+// ------------------------------------------------------------------ properties
+await step("properties: sits under Calendar, and lists every one", async () => {
+  await page.goto(`${base}/`);
+  const lines = (await page.locator("nav").first().innerText()).split("\n").map((s) => s.trim()).filter(Boolean);
+  if (lines.indexOf("Properties") !== lines.indexOf("Calendar") + 1) {
+    throw new Error(`Properties should follow Calendar, got: ${lines.join(" | ")}`);
+  }
+  await page.goto(`${base}/properties`);
+  await page.waitForSelector("text=Villa Coral Bay");
+  if (await page.locator('a[href^="/properties/"]').count() < 6) throw new Error("not all properties listed");
+});
+
+await step("properties: a manager sees codes, owner and the custom details", async () => {
+  await page.click("text=Villa Coral Bay");
+  await page.waitForSelector("text=Getting in");
+  const body = await page.locator("body").innerText();
+  for (const want of ["4417", "CoralBay-Guest", "Owner", "r.henriquez@gmail.com", "Good to know"]) {
+    if (!body.includes(want)) throw new Error(`manager view is missing: ${want}`);
+  }
+  // details are editable for a manager, so they sit in input values
+  const labels = await page.locator('input[aria-label="Detail name"]').evaluateAll((els) => els.map((e) => e.value));
+  if (!labels.includes("Garbage collection")) throw new Error(`details missing, saw: ${labels.join(", ")}`);
+});
+
+await step("properties: a manager can add a detail of their own", async () => {
+  await page.fill('input[aria-label="Add a detail"]', "Water shut-off");
+  // scope to the form — the header's own "+ Add" button matches too
+  await page.locator('form:has(input[aria-label="Add a detail"]) button[type="submit"]').click();
+  await page.waitForSelector('input[aria-label="Value for Water shut-off"]', { timeout: 15000 });
+  await page.fill('input[aria-label="Value for Water shut-off"]', "Behind the pool pump");
+  await page.waitForTimeout(1400);
+  await page.reload();
+  const v = await page.locator('input[aria-label="Value for Water shut-off"]').inputValue();
+  if (v !== "Behind the pool pump") throw new Error(`detail did not save, got "${v}"`);
+});
+
+await step("properties: a cleaner gets the codes but none of the rest", async () => {
+  await page.goto(`${base}/admin`);
+  await page.waitForSelector("text=Access control");
+  await page.click('button:has-text("Dwight Tromp")');
+  await page.waitForSelector("text=Select all");
+  await page.click('button:has-text("Clear all")');
+  await page.waitForTimeout(700);
+  for (const label of ["Properties", "Cleaning Schedule"]) {
+    await page.click(`input[aria-label="Dwight Tromp — ${label}"]`);
+    await page.waitForTimeout(600);
+  }
+
+  const ctx = await browser.newContext();
+  const cp = await ctx.newPage();
+  await cp.goto(`${base}/login`);
+  await cp.fill('input[name="email"]', "dwight@coralux.aw");
+  await cp.fill('input[name="password"]', "coralux2026");
+  await cp.click('button[type="submit"]');
+  await cp.waitForURL((u) => !u.pathname.startsWith("/login"), { timeout: 20000 });
+
+  await cp.goto(`${base}/properties`);
+  await cp.click("text=Villa Coral Bay");
+  await cp.waitForSelector("text=Getting in");
+  const body = await cp.locator("body").innerText();
+  for (const want of ["4417", "2290", "CoralBay-Guest", "coralbay2026", "Garbage collection"]) {
+    if (!body.includes(want)) throw new Error(`cleaner should see: ${want}`);
+  }
+  for (const secret of ["r.henriquez@gmail.com", "R. Henriquez", "Alarm", "Owner payout day", "Documents"]) {
+    if (body.includes(secret)) throw new Error(`cleaner must NOT see: ${secret}`);
+  }
+  if (await cp.locator('a:has-text("Edit")').count() > 0) throw new Error("Edit offered to a cleaner");
+  if ((await cp.goto(`${base}/properties/new`)).status() !== 404) throw new Error("new-property page should 404 for staff");
+  await ctx.close();
+
+  await page.goto(`${base}/admin`);
+  await page.click('button:has-text("Dwight Tromp")');
+  await page.waitForSelector('button:has-text("Reset to role defaults")');
+  await page.click('button:has-text("Reset to role defaults")');
+  await page.waitForTimeout(1200);
+});
+
+await step("admin only counts the sections actually in use", async () => {
+  await page.goto(`${base}/admin`);
+  await page.waitForSelector("text=What the database holds");
+  const panel = await page.locator('section:has(h2:text("What the database holds"))').innerText();
+  for (const gone of ["Invoices", "Requests", "Payouts", "Contracts", "Time off", "Assets", "SOPs"]) {
+    if (panel.includes(gone)) throw new Error(`${gone} is still counted`);
+  }
+  if (!panel.includes("Properties")) throw new Error("Properties should be counted");
+});
+
 // ---------------------------------------------------------------- listings
 await step("listings: nav link present and page loads with seeded data", async () => {
   await page.click('a:has-text("Listing Onboarding")');

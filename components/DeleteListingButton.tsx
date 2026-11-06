@@ -8,7 +8,7 @@ export default function DeleteListingButton({ id, name }: { id: string; name: st
     <form
       action={deleteListingAction}
       onSubmit={(e) => {
-        if (!confirm(`Delete "${name}" and its whole checklist? This cannot be undone.`)) {
+        if (!confirm(`Delete "${name}" and its whole checklist? Undo in the header will bring it back.`)) {
           e.preventDefault();
         }
       }}

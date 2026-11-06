@@ -4,7 +4,7 @@ import { NewUserForm, UserRowControls } from "@/components/AdminUsers";
 import { Card, Chip, PageHeader } from "@/components/ui";
 import { atLeast, listUsers, requireUser } from "@/lib/auth";
 import { all, one } from "@/lib/db";
-import { ENTITIES, ENTITY_KEYS } from "@/lib/entities";
+import { ENTITIES, ENTITY_KEYS, isEnabled } from "@/lib/entities";
 import { formatDate } from "@/lib/format";
 import { accessOverview, PERMISSION_SECTIONS } from "@/lib/permissions";
 import { refOptions } from "@/lib/records";
@@ -31,11 +31,18 @@ export default async function AdminPage() {
     doorCode: (u as { door_code?: string | null }).door_code ?? null,
   }));
 
-  const counts = ENTITY_KEYS.map((key) => {
+  // only the sections actually switched on: the rest are empty by design and
+  // listing them was just noise
+  const counts = ENTITY_KEYS.filter(isEnabled).map((key) => {
     const entity = ENTITIES[key];
     const row = one<{ c: number }>(`SELECT COUNT(*) AS c FROM ${entity.table}`);
     return { label: entity.label, count: row?.c ?? 0 };
   });
+  const extraCounts = [
+    { label: "Properties", count: one<{ c: number }>(`SELECT COUNT(*) AS c FROM properties`)?.c ?? 0 },
+    { label: "Listings", count: one<{ c: number }>(`SELECT COUNT(*) AS c FROM listings`)?.c ?? 0 },
+    { label: "Cleaning shifts", count: one<{ c: number }>(`SELECT COUNT(*) AS c FROM cleaning_shifts`)?.c ?? 0 },
+  ];
   const fileCount = one<{ c: number; bytes: number }>(
     `SELECT COUNT(*) AS c, COALESCE(SUM(size_bytes), 0) AS bytes FROM files`,
   );
@@ -129,7 +136,7 @@ export default async function AdminPage() {
         <div className="grid lg:grid-cols-2 gap-5">
           <Card title="What the database holds">
             <ul className="grid grid-cols-2 gap-x-6 gap-y-1.5 text-sm">
-              {counts.map((c) => (
+              {[...counts, ...extraCounts].map((c) => (
                 <li key={c.label} className="flex justify-between">
                   <span style={{ color: "var(--ink-2)" }}>{c.label}</span>
                   <span className="tabular-nums font-medium">{c.count}</span>
