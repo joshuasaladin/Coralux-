@@ -501,3 +501,59 @@ CREATE INDEX IF NOT EXISTS idx_user_section_access_user ON user_section_access(u
 CREATE TABLE IF NOT EXISTS user_access_custom (
   user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE
 );
+
+-- ------------------------------------------------------------------ guesty
+
+-- Listings as Guesty knows them. Deliberately NOT the `listings` table above,
+-- which is the onboarding checklist for a property going live — a different
+-- thing with the same word. One row per Guesty listing, created the first
+-- time a sync sees it, so a new listing in Guesty needs no code change here.
+CREATE TABLE IF NOT EXISTS guesty_listings (
+  id          TEXT PRIMARY KEY,
+  guesty_id   TEXT NOT NULL UNIQUE,            -- Guesty's own listing id
+  name        TEXT NOT NULL,
+  nickname    TEXT,
+  colour      INTEGER NOT NULL DEFAULT 0,      -- index into the calendar palette
+  active      INTEGER NOT NULL DEFAULT 1,
+  synced_at   TEXT NOT NULL,
+  created_at  TEXT NOT NULL,
+  updated_at  TEXT NOT NULL
+);
+
+-- One row per Guesty reservation. A cancelled booking keeps its row and
+-- changes status, so the calendar can show that it went away rather than
+-- quietly losing it.
+CREATE TABLE IF NOT EXISTS reservations (
+  id                TEXT PRIMARY KEY,
+  guesty_id         TEXT NOT NULL UNIQUE,      -- Guesty's own reservation id
+  guesty_listing_id TEXT NOT NULL,             -- joins guesty_listings.guesty_id
+  check_in          TEXT NOT NULL,             -- YYYY-MM-DD
+  check_out         TEXT NOT NULL,             -- YYYY-MM-DD
+  guest_name        TEXT,                      -- shown to managers and above only
+  channel           TEXT,                      -- airbnb, bookingCom, direct, ...
+  status            TEXT NOT NULL,             -- confirmed | canceled | inquiry | ...
+  nights            INTEGER,
+  guest_count       INTEGER,
+  confirmation_code TEXT,
+  last_updated      TEXT,                      -- Guesty's own updatedAt
+  synced_at         TEXT NOT NULL,
+  created_at        TEXT NOT NULL,
+  updated_at        TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_reservations_check_in ON reservations(check_in);
+CREATE INDEX IF NOT EXISTS idx_reservations_check_out ON reservations(check_out);
+CREATE INDEX IF NOT EXISTS idx_reservations_listing ON reservations(guesty_listing_id);
+
+-- The access token and the last run, in one row. Guesty rate-limits token
+-- requests hard, so the token is cached here and reused until it is nearly
+-- expired — including across restarts, which an in-memory cache would lose.
+CREATE TABLE IF NOT EXISTS guesty_sync (
+  id                INTEGER PRIMARY KEY CHECK (id = 1),
+  access_token      TEXT,
+  token_expires_at  TEXT,
+  last_run_at       TEXT,
+  last_status       TEXT,                      -- ok | error
+  last_message      TEXT,
+  listings_seen     INTEGER,
+  reservations_seen INTEGER
+);
