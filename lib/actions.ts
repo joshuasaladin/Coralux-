@@ -733,3 +733,17 @@ export async function deletePropertyFactAction(form: FormData) {
   deleteFact(String(form.get("fact_id") ?? ""), gate.user);
   revalidatePath(`/properties/${propertyId}`);
 }
+
+// -------------------------------------------------------------------- guesty
+
+/** Pull from Guesty now, rather than waiting for the ten-minute schedule. */
+export async function syncGuestyAction(): Promise<{ ok: boolean; message: string }> {
+  const user = await requireUser();
+  if (!canAccessSection(user, "reservations")) return { ok: false, message: "Not permitted." };
+  if (!atLeast(user.role, "manager")) return { ok: false, message: "Managers only." };
+
+  const { syncGuesty } = await import("./guesty");
+  const result = await syncGuesty();
+  revalidatePath("/reservations");
+  return { ok: result.ok, message: result.message };
+}

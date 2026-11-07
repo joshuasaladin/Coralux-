@@ -34,3 +34,11 @@ services:
         sync: false
       - key: ADMIN_PASSWORD
         sync: false
+      # Guesty Open API credentials for the reservations sync. Add them in the
+      # Render dashboard on this service (Environment → Add Environment
+      # Variable); sync:false keeps the values out of git. Without them the
+      # app runs normally and the scheduled sync simply stays off.
+      - key: GUESTY_CLIENT_ID
+        sync: false
+      - key: GUESTY_CLIENT_SECRET
+        sync: false

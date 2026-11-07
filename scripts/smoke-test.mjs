@@ -1034,6 +1034,120 @@ await step("an admin cannot edit their own access", async () => {
   await ctx.close();
 });
 
+// -------------------------------------------------------------- reservations
+//
+// The Guesty sync itself is exercised against a stub outside this suite (it
+// needs a fake API on a port); here we seed the two tables the sync writes
+// and check the page built on top of them — colours, filtering, the week
+// view, cancellations and, most importantly, who gets to see guest names.
+const guestyIso = (offset) => {
+  const d = new Date();
+  d.setDate(d.getDate() + offset);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
+
+await step("reservations: says so plainly before the first sync", async () => {
+  await page.goto(`${base}/reservations`);
+  await page.waitForSelector("text=Nothing from Guesty yet");
+});
+
+await step("reservations: seed two properties and three bookings", async () => {
+  const db = new Database("./data/coralux.db");
+  const stamp = new Date().toISOString();
+  db.prepare("DELETE FROM reservations").run();
+  db.prepare("DELETE FROM guesty_listings").run();
+  const listing = db.prepare(
+    `INSERT INTO guesty_listings (id, guesty_id, name, nickname, colour, active, synced_at, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)`,
+  );
+  listing.run("gl-a", "GL-A", "Smoke Villa A", "Smoke A", 0, stamp, stamp, stamp);
+  listing.run("gl-b", "GL-B", "Smoke Villa B", "Smoke B", 1, stamp, stamp, stamp);
+  const booking = db.prepare(
+    `INSERT INTO reservations (id, guesty_id, guesty_listing_id, check_in, check_out, guest_name,
+                               channel, status, synced_at, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  );
+  booking.run("gr-1", "GR-1", "GL-A", guestyIso(0), guestyIso(2), "Wilhelmina Croes", "airbnb", "confirmed", stamp, stamp, stamp);
+  booking.run("gr-2", "GR-2", "GL-B", guestyIso(0), guestyIso(3), "Marcelo Tromp", "bookingCom", "confirmed", stamp, stamp, stamp);
+  booking.run("gr-3", "GR-3", "GL-A", guestyIso(1), guestyIso(4), "Cancelled Guest", "manual", "canceled", stamp, stamp, stamp);
+  db.close();
+});
+
+await step("reservations: each property keeps its own colour on the calendar", async () => {
+  await page.goto(`${base}/reservations`);
+  await page.waitForSelector('[data-entry="chip"][title^="Check-in"]');
+  const colourOf = async (name) =>
+    page.locator(`[data-entry="chip"][title^="Check-in — ${name}"]`).first().evaluate((el) => getComputedStyle(el).backgroundColor);
+  const a = await colourOf("Smoke A");
+  const b = await colourOf("Smoke B");
+  if (!a || a === b) throw new Error(`two properties should not share a colour (${a} vs ${b})`);
+});
+
+await step("reservations: a cancelled booking stays visible, struck through", async () => {
+  const cancelled = page.locator('[data-entry="chip"][title*="(canceled)"]').first();
+  if (await cancelled.count() === 0) throw new Error("the cancelled booking vanished from the calendar");
+  const line = await cancelled.evaluate((el) => getComputedStyle(el).textDecorationLine);
+  if (!line.includes("line-through")) throw new Error(`cancelled booking is not struck through (${line})`);
+});
+
+await step("reservations: the next fortnight lists arrivals and departures", async () => {
+  // both fortnight cards are plain lists, which the calendar grid is not
+  const listed = (await page.locator("li").allInnerTexts()).join("\n");
+  if (!listed.includes("Smoke A") || !listed.includes("Smoke B")) {
+    throw new Error("both properties should be arriving in the next fortnight");
+  }
+  if (listed.includes("Cancelled Guest")) {
+    throw new Error("a cancelled booking must not be listed as upcoming work");
+  }
+});
+
+await step("reservations: hiding a property drops it from the calendar", async () => {
+  await page.click('a.chip:has-text("Smoke A")');
+  await page.waitForSelector('a:has-text("Show all")');
+  if (await page.locator('[data-entry="chip"][title^="Check-in — Smoke A"]').count() > 0) {
+    throw new Error("the hidden property is still on the calendar");
+  }
+  if (await page.locator('[data-entry="chip"][title^="Check-in — Smoke B"]').count() === 0) {
+    throw new Error("hiding one property hid the other too");
+  }
+  await page.click('a:has-text("Show all")');
+  await page.waitForSelector('[data-entry="chip"][title^="Check-in — Smoke A"]');
+});
+
+await step("reservations: the week view keeps the same bookings", async () => {
+  await page.click('a.tab:has-text("Week")');
+  await page.waitForSelector("text=Week of");
+  if (await page.locator('[data-entry="chip"][title^="Check-in — Smoke A"]').count() === 0) {
+    throw new Error("today's check-in is missing from the week view");
+  }
+  await page.click('a.tab:has-text("Month")');
+  await page.waitForSelector('[data-entry="chip"][title^="Check-in — Smoke A"]');
+});
+await page.screenshot({ path: `${out}/40-reservations.png`, fullPage: true });
+
+await step("reservations: staff see the turnarounds but never the guest names", async () => {
+  const ctx = await browser.newContext();
+  const sp = await ctx.newPage();
+  await sp.goto(`${base}/login`);
+  await sp.fill('input[name="email"]', "dwight@coralux.aw"); // seeded with role: staff
+  await sp.fill('input[name="password"]', "coralux2026");
+  await sp.click('button[type="submit"]');
+  await sp.waitForURL(`${base}/`, { timeout: 15000 });
+
+  await sp.goto(`${base}/reservations`);
+  await sp.waitForSelector('[data-entry="chip"][title^="Check-in — Smoke A"]');
+  // the whole document, not just the visible text: a name leaked into a
+  // title attribute or the flight payload is still a leak
+  const html = await sp.content();
+  for (const name of ["Wilhelmina Croes", "Marcelo Tromp", "Cancelled Guest"]) {
+    if (html.includes(name)) throw new Error(`staff must not see the guest name ${name}`);
+  }
+  if (await sp.locator('button:has-text("Sync from Guesty")').count() > 0) {
+    throw new Error("staff should not be offered the Guesty sync");
+  }
+  await ctx.close();
+});
+
 if (errors.length) {
   console.log("\nBrowser errors:");
   for (const e of [...new Set(errors)]) console.log("  " + e);
