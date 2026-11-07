@@ -66,6 +66,7 @@ export default async function PropertiesPage() {
                 {property.door_code && <Chip tone="info">Door {property.door_code}</Chip>}
                 {property.lockbox_code && <Chip tone="muted">Lockbox {property.lockbox_code}</Chip>}
                 {property.wifi_name && <Chip tone="muted">Wi-Fi</Chip>}
+                {property.guesty_listing_id && <Chip tone="muted">Guesty</Chip>}
               </div>
             </Link>
           ))}

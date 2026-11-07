@@ -44,6 +44,9 @@ CREATE TABLE IF NOT EXISTS properties (
   -- the owner's side, kept away from staff
   owner_email   TEXT,
   owner_phone   TEXT,
+  -- set when the property came from (or was matched to) a Guesty listing,
+  -- so the sync knows it already has one and never makes a second
+  guesty_listing_id TEXT,
   created_at    TEXT NOT NULL,
   updated_at    TEXT NOT NULL
 );

@@ -31,6 +31,7 @@ function addMissingColumns(db: Database.Database) {
     ["door_code", "TEXT"], ["lockbox_code", "TEXT"], ["alarm_code", "TEXT"],
     ["wifi_name", "TEXT"], ["wifi_password", "TEXT"], ["parking", "TEXT"],
     ["access_notes", "TEXT"], ["owner_email", "TEXT"], ["owner_phone", "TEXT"],
+    ["guesty_listing_id", "TEXT"],
   ] as const) {
     if (!props.has(col)) db.exec(`ALTER TABLE properties ADD COLUMN ${col} ${type}`);
   }

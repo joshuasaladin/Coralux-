@@ -1,4 +1,4 @@
-import { all, id as newId, now, one, run } from "./db";
+import { all, id as newId, logActivity, now, one, run } from "./db";
 
 /**
  * Talking to the Guesty Open API.
@@ -30,6 +30,8 @@ export type SyncResult = {
   ok: boolean;
   listings: number;
   reservations: number;
+  /** Properties created in this run because Guesty had a listing we did not. */
+  properties: number;
   message: string;
   ranAt: string;
 };
@@ -181,8 +183,8 @@ export async function syncGuesty(): Promise<SyncResult> {
 
   if (!guestyConfigured()) {
     const message = "GUESTY_CLIENT_ID and GUESTY_CLIENT_SECRET are not set on this service.";
-    recordRun({ ok: false, listings: 0, reservations: 0, message, ranAt });
-    return { ok: false, listings: 0, reservations: 0, message, ranAt };
+    recordRun({ ok: false, listings: 0, reservations: 0, properties: 0, message, ranAt });
+    return { ok: false, listings: 0, reservations: 0, properties: 0, message, ranAt };
   }
 
   try {
@@ -199,13 +201,26 @@ export async function syncGuesty(): Promise<SyncResult> {
     });
     const reservationCount = upsertReservations(reservations, ranAt);
 
-    const message = `Synced ${listingCount} listings and ${reservationCount} reservations.`;
-    recordRun({ ok: true, listings: listingCount, reservations: reservationCount, message, ranAt });
-    return { ok: true, listings: listingCount, reservations: reservationCount, message, ranAt };
+    // every Guesty listing should have somewhere to keep its door code
+    const created = syncProperties(ranAt);
+
+    const message =
+      `Synced ${listingCount} listings and ${reservationCount} reservations.` +
+      (created ? ` Added ${created} ${created === 1 ? "property" : "properties"}.` : "");
+    const result = {
+      ok: true as const,
+      listings: listingCount,
+      reservations: reservationCount,
+      properties: created,
+      message,
+      ranAt,
+    };
+    recordRun(result);
+    return result;
   } catch (err) {
     const message = err instanceof Error ? err.message : "Sync failed.";
-    recordRun({ ok: false, listings: 0, reservations: 0, message, ranAt });
-    return { ok: false, listings: 0, reservations: 0, message, ranAt };
+    recordRun({ ok: false, listings: 0, reservations: 0, properties: 0, message, ranAt });
+    return { ok: false, listings: 0, reservations: 0, properties: 0, message, ranAt };
   }
 }
 
@@ -245,6 +260,81 @@ function upsertListings(rows: any[], syncedAt: string): number {
     seen += 1;
   }
   return seen;
+}
+
+/** Same name, give or take the spacing and the capitals. */
+function normalise(value: string | null | undefined): string {
+  return (value ?? "").toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+/**
+ * Give every Guesty listing a row in Properties.
+ *
+ * A property is where the door code, the lockbox, the Wi-Fi and the owner's
+ * details live, and Guesty holds none of that — so a listing arriving from
+ * Guesty needs somewhere to put it. A property already called by the same
+ * name is adopted rather than duplicated; anything else gets created with
+ * just its name, ready to be filled in.
+ *
+ * It only ever adds. Renaming a property here, or deleting one, is a
+ * decision somebody made on purpose, and the link is what stops the next
+ * sync from undoing it.
+ */
+function syncProperties(syncedAt: string): number {
+  const listings = all<{ guesty_id: string; name: string; nickname: string | null }>(
+    `SELECT guesty_id, name, nickname FROM guesty_listings WHERE active = 1`,
+  );
+  if (listings.length === 0) return 0;
+
+  const properties = all<{ id: string; name: string; guesty_listing_id: string | null }>(
+    `SELECT id, name, guesty_listing_id FROM properties`,
+  );
+  const linked = new Set(
+    properties.map((p) => p.guesty_listing_id).filter(Boolean) as string[],
+  );
+  // only an unclaimed property can be adopted, and the first one wins
+  const byName = new Map<string, string>();
+  for (const property of properties) {
+    if (property.guesty_listing_id) continue;
+    const key = normalise(property.name);
+    if (key && !byName.has(key)) byName.set(key, property.id);
+  }
+
+  let created = 0;
+  for (const listing of listings) {
+    if (linked.has(listing.guesty_id)) continue;
+
+    const match =
+      byName.get(normalise(listing.name)) ?? byName.get(normalise(listing.nickname));
+
+    if (match) {
+      run(`UPDATE properties SET guesty_listing_id = ?, updated_at = ? WHERE id = ?`, [
+        listing.guesty_id,
+        syncedAt,
+        match,
+      ]);
+      byName.delete(normalise(listing.name));
+      if (listing.nickname) byName.delete(normalise(listing.nickname));
+      linked.add(listing.guesty_id);
+      continue;
+    }
+
+    const propertyId = newId();
+    run(
+      `INSERT INTO properties (id, name, status, guesty_listing_id, created_at, updated_at)
+       VALUES (?, ?, 'active', ?, ?, ?)`,
+      [propertyId, listing.name, listing.guesty_id, syncedAt, syncedAt],
+    );
+    logActivity(
+      "properties",
+      propertyId,
+      "created",
+      `Property "${listing.name}" added from Guesty`,
+    );
+    linked.add(listing.guesty_id);
+    created += 1;
+  }
+  return created;
 }
 
 function upsertReservations(rows: any[], syncedAt: string): number {

@@ -1070,7 +1070,23 @@ await step("reservations: seed two properties and three bookings", async () => {
   booking.run("gr-1", "GR-1", "GL-A", guestyIso(0), guestyIso(2), "Wilhelmina Croes", "airbnb", "confirmed", stamp, stamp, stamp);
   booking.run("gr-2", "GR-2", "GL-B", guestyIso(0), guestyIso(3), "Marcelo Tromp", "bookingCom", "confirmed", stamp, stamp, stamp);
   booking.run("gr-3", "GR-3", "GL-A", guestyIso(1), guestyIso(4), "Cancelled Guest", "manual", "canceled", stamp, stamp, stamp);
+  // the sync links a listing to the property of the same name; stand in for
+  // that here, since the sync itself needs credentials this suite has not got
+  db.prepare("UPDATE properties SET guesty_listing_id = 'GL-A' WHERE name = 'Villa Coral Bay'").run();
   db.close();
+});
+
+await step("properties: one that came from Guesty says so", async () => {
+  await page.goto(`${base}/properties`);
+  await page.waitForSelector("text=Villa Coral Bay");
+  const card = page.locator('a[href^="/properties/"]', { hasText: "Villa Coral Bay" }).first();
+  if (!(await card.innerText()).includes("Guesty")) {
+    throw new Error("a property linked to a Guesty listing should be marked as such");
+  }
+  const others = page.locator('a[href^="/properties/"]', { hasText: "Oranjestad Lofts" }).first();
+  if ((await others.innerText()).includes("Guesty")) {
+    throw new Error("a property with no Guesty listing must not be marked");
+  }
 });
 
 await step("reservations: each property keeps its own colour on the calendar", async () => {
