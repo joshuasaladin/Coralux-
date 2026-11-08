@@ -423,6 +423,26 @@ export function listGuestyListings(): GuestyListing[] {
 
 /** Reservations touching a date range, cancellations included so the page can
  * decide whether to show them. */
+/**
+ * The listings with a guest in them on the given day.
+ *
+ * The check-out date does not count as occupied: the guest leaves that
+ * morning, which is the whole point of a turnaround. Cancellations are
+ * ignored the same way the calendar ignores them — the test matches
+ * isCancelled() in lib/reservations-shared.ts.
+ */
+export function occupiedListingIds(on: string): Set<string> {
+  const rows = all<{ guesty_listing_id: string }>(
+    `SELECT DISTINCT guesty_listing_id
+       FROM reservations
+      WHERE check_in <= ? AND check_out > ?
+        AND LOWER(COALESCE(status, '')) NOT LIKE '%cancel%'
+        AND LOWER(COALESCE(status, '')) NOT IN ('declined', 'expired')`,
+    [on, on],
+  );
+  return new Set(rows.map((r) => r.guesty_listing_id));
+}
+
 export function reservationsBetween(from: string, to: string): Reservation[] {
   return all<Reservation>(
     `SELECT r.*, COALESCE(l.nickname, l.name) AS listing_name, l.colour AS colour

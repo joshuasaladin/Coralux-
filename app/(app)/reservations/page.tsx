@@ -4,7 +4,7 @@ import ReservationCalendar from "@/components/ReservationCalendar";
 import Icon from "@/components/Icon";
 import { Card, Chip, EmptyState, PageHeader } from "@/components/ui";
 import { atLeast } from "@/lib/auth";
-import { lastSync, listGuestyListings, reservationsBetween } from "@/lib/guesty";
+import { lastSync, listGuestyListings, occupiedListingIds, reservationsBetween } from "@/lib/guesty";
 import { requireSection } from "@/lib/permissions";
 import { timeAgo } from "@/lib/format";
 import {
@@ -38,6 +38,8 @@ export default async function ReservationsPage({
   const anchor = typeof query.on === "string" && /^\d{4}-\d{2}-\d{2}$/.test(query.on) ? query.on : today;
 
   const listings = listGuestyListings();
+  // a filled dot on the chip means somebody is in there right now
+  const occupied = occupiedListingIds(today);
   // ?hide=a,b keeps the filter in the URL, so a filtered view is shareable
   const hidden = new Set(
     typeof query.hide === "string" ? query.hide.split(",").filter(Boolean) : [],
@@ -143,7 +145,12 @@ export default async function ReservationsPage({
         </div>
       ) : (
         <>
-          <PropertyFilter listings={listings} hidden={hidden} href={href} />
+          <PropertyFilter
+            listings={listings}
+            hidden={hidden}
+            occupied={occupied}
+            href={href}
+          />
 
           <ReservationCalendar days={days} rows={rows} view={view} today={today} anchor={anchor} />
 
@@ -180,14 +187,21 @@ export default async function ReservationsPage({
   );
 }
 
-/** Tick a property off and it drops out of the calendar and both lists. */
+/**
+ * Tick a property off and it drops out of the calendar and both lists.
+ *
+ * The dot does double duty: it carries the property's colour, and whether
+ * it is filled says whether anyone is staying there today.
+ */
 function PropertyFilter({
   listings,
   hidden,
+  occupied,
   href,
 }: {
   listings: Record<string, any>[];
   hidden: Set<string>;
+  occupied: Set<string>;
   href: (patch: Record<string, string | undefined>) => string;
 }) {
   const toggle = (guestyId: string) => {
@@ -197,37 +211,55 @@ function PropertyFilter({
     return href({ hide: [...next].join(",") || undefined });
   };
 
+  const full = occupied.size;
+
   return (
-    <div className="panel p-3 mb-4 flex flex-wrap items-center gap-2">
-      {listings.map((listing) => {
-        const off = hidden.has(listing.guesty_id);
-        const colour = listingColour(Number(listing.colour ?? 0));
-        return (
-          <Link
-            key={listing.guesty_id}
-            href={toggle(listing.guesty_id)}
-            className="chip"
-            style={{
-              background: off ? "transparent" : colour.bg,
-              color: off ? "var(--ink-3)" : colour.fg,
-              border: `1px solid ${off ? "var(--line-2)" : "transparent"}`,
-              textDecoration: off ? "line-through" : "none",
-            }}
-            title={off ? "Hidden — click to show" : "Showing — click to hide"}
-          >
-            <span
-              className="inline-block w-2 h-2 rounded-full"
-              style={{ background: off ? "var(--line-2)" : colour.dot }}
-            />
-            {listing.nickname || listing.name}
+    <div className="panel p-3 mb-4">
+      <div className="flex flex-wrap items-center gap-2">
+        {listings.map((listing) => {
+          const off = hidden.has(listing.guesty_id);
+          const busy = occupied.has(listing.guesty_id);
+          const colour = listingColour(Number(listing.colour ?? 0));
+          const edge = off ? "var(--line-2)" : colour.dot;
+          return (
+            <Link
+              key={listing.guesty_id}
+              href={toggle(listing.guesty_id)}
+              className="chip"
+              style={{
+                background: off ? "transparent" : colour.bg,
+                color: off ? "var(--ink-3)" : colour.fg,
+                border: `1px solid ${off ? "var(--line-2)" : "transparent"}`,
+                textDecoration: off ? "line-through" : "none",
+              }}
+              title={`${busy ? "Occupied today" : "Empty today"} · ${
+                off ? "hidden, click to show" : "click to hide"
+              }`}
+            >
+              <span
+                data-occupied={busy ? "yes" : "no"}
+                className="inline-block w-2.5 h-2.5 rounded-full shrink-0"
+                style={{
+                  background: busy ? edge : "transparent",
+                  border: `1.5px solid ${edge}`,
+                }}
+              />
+              {listing.nickname || listing.name}
+            </Link>
+          );
+        })}
+        {hidden.size > 0 && (
+          <Link href={href({ hide: undefined })} className="btn btn-ghost btn-sm ml-auto">
+            Show all
           </Link>
-        );
-      })}
-      {hidden.size > 0 && (
-        <Link href={href({ hide: undefined })} className="btn btn-ghost btn-sm ml-auto">
-          Show all
-        </Link>
-      )}
+        )}
+      </div>
+
+      <p className="text-xs mt-2.5" style={{ color: "var(--ink-3)" }}>
+        A <strong style={{ color: "var(--ink-2)" }}>filled</strong> dot means someone is staying
+        there today, a <strong style={{ color: "var(--ink-2)" }}>hollow</strong> one that it is
+        empty — {full} of {listings.length} occupied. Click a property to hide it.
+      </p>
     </div>
   );
 }

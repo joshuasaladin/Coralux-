@@ -1062,6 +1062,8 @@ await step("reservations: seed two properties and three bookings", async () => {
   );
   listing.run("gl-a", "GL-A", "Smoke Villa A", "Smoke A", 0, stamp, stamp, stamp);
   listing.run("gl-b", "GL-B", "Smoke Villa B", "Smoke B", 1, stamp, stamp, stamp);
+  // no bookings at all: the empty property the occupancy dot has to show
+  listing.run("gl-c", "GL-C", "Smoke Villa C", "Smoke C", 2, stamp, stamp, stamp);
   const booking = db.prepare(
     `INSERT INTO reservations (id, guesty_id, guesty_listing_id, check_in, check_out, guest_name,
                                channel, status, synced_at, created_at, updated_at)
@@ -1097,6 +1099,22 @@ await step("reservations: each property keeps its own colour on the calendar", a
   const a = await colourOf("Smoke A");
   const b = await colourOf("Smoke B");
   if (!a || a === b) throw new Error(`two properties should not share a colour (${a} vs ${b})`);
+});
+
+await step("reservations: the chip dot is filled while someone is staying", async () => {
+  const dot = async (name) =>
+    page.locator(`a.chip:has-text("${name}") [data-occupied]`).first().evaluate((el) => ({
+      occupied: el.dataset.occupied,
+      filled: getComputedStyle(el).backgroundColor !== "rgba(0, 0, 0, 0)",
+    }));
+  const staying = await dot("Smoke A"); // checked in today, leaves in two days
+  if (staying.occupied !== "yes" || !staying.filled) {
+    throw new Error("an occupied property should have a filled dot");
+  }
+  const empty = await dot("Smoke C"); // no bookings at all
+  if (empty.occupied !== "no" || empty.filled) {
+    throw new Error("an empty property should have a hollow dot");
+  }
 });
 
 await step("reservations: a cancelled booking stays visible, struck through", async () => {
