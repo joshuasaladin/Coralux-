@@ -24,10 +24,14 @@ export function listingColour(index: number) {
   return LISTING_COLOURS[((index % LISTING_COLOURS.length) + LISTING_COLOURS.length) % LISTING_COLOURS.length]!;
 }
 
-/** A cancelled booking is still worth seeing, just not worth shouting about. */
+/**
+ * Whether a booking is off: cancelled, declined, expired, or "removed" —
+ * the sync's own word for a booking Guesty has stopped listing. Anything
+ * this says yes to is left off the calendar and out of the lists.
+ */
 export function isCancelled(status: string | null | undefined): boolean {
   const s = (status ?? "").toLowerCase();
-  return s.includes("cancel") || s === "declined" || s === "expired";
+  return s.includes("cancel") || s === "declined" || s === "expired" || s === "removed";
 }
 
 export function isoDate(d: Date): string {

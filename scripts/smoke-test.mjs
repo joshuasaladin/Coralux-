@@ -1072,6 +1072,8 @@ await step("reservations: seed two properties and three bookings", async () => {
   booking.run("gr-1", "GR-1", "GL-A", guestyIso(0), guestyIso(2), "Wilhelmina Croes", "airbnb", "confirmed", stamp, stamp, stamp);
   booking.run("gr-2", "GR-2", "GL-B", guestyIso(0), guestyIso(3), "Marcelo Tromp", "bookingCom", "confirmed", stamp, stamp, stamp);
   booking.run("gr-3", "GR-3", "GL-A", guestyIso(1), guestyIso(4), "Cancelled Guest", "manual", "canceled", stamp, stamp, stamp);
+  // what the sync writes when Guesty stops listing a booking altogether
+  booking.run("gr-4", "GR-4", "GL-B", guestyIso(1), guestyIso(3), "Vanished Guest", "airbnb", "removed", stamp, stamp, stamp);
   // the sync links a listing to the property of the same name; stand in for
   // that here, since the sync itself needs credentials this suite has not got
   db.prepare("UPDATE properties SET guesty_listing_id = 'GL-A' WHERE name = 'Villa Coral Bay'").run();
@@ -1121,6 +1123,9 @@ await step("reservations: a cancelled booking is off the calendar but still in t
   const html = await page.content();
   if (html.includes("Cancelled Guest")) {
     throw new Error("a cancelled booking should not be drawn on the calendar");
+  }
+  if (html.includes("Vanished Guest")) {
+    throw new Error("a booking Guesty no longer lists should not be drawn on the calendar");
   }
   // the row itself must survive — deleting it is what would make the next
   // sync treat the booking as new again

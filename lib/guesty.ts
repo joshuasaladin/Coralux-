@@ -128,8 +128,16 @@ async function apiGet(path: string, params: Record<string, string>): Promise<any
   throw new Error(`Guesty ${path} kept rejecting the access token.`);
 }
 
-/** Walk a paged endpoint to the end. */
-async function fetchAll(path: string, extra: Record<string, string> = {}): Promise<any[]> {
+/**
+ * Walk a paged endpoint to the end.
+ *
+ * `complete` is false only when the page cap stopped the walk early, which
+ * matters to anything that reads "Guesty did not send it" as "it is gone".
+ */
+async function fetchAll(
+  path: string,
+  extra: Record<string, string> = {},
+): Promise<{ rows: any[]; complete: boolean }> {
   const rows: any[] = [];
   for (let page = 0; page < MAX_PAGES; page++) {
     const json = await apiGet(path, {
@@ -139,9 +147,9 @@ async function fetchAll(path: string, extra: Record<string, string> = {}): Promi
     });
     const batch: any[] = json?.results ?? json?.data?.results ?? [];
     rows.push(...batch);
-    if (batch.length < PAGE_SIZE) break;
+    if (batch.length < PAGE_SIZE) return { rows, complete: true };
   }
-  return rows;
+  return { rows, complete: false };
 }
 
 // ------------------------------------------------------------------ shapes
@@ -188,10 +196,10 @@ export async function syncGuesty(): Promise<SyncResult> {
   }
 
   try {
-    const listings = await fetchAll("/listings");
+    const listings = (await fetchAll("/listings")).rows;
     const listingCount = upsertListings(listings, ranAt);
 
-    const reservations = await fetchAll("/reservations", {
+    const pulled = await fetchAll("/reservations", {
       // everything, cancellations included — the status is the point
       fields: [
         "_id", "listingId", "checkIn", "checkOut", "status", "source",
@@ -199,13 +207,21 @@ export async function syncGuesty(): Promise<SyncResult> {
         "confirmationCode", "lastUpdatedAt",
       ].join(" "),
     });
-    const reservationCount = upsertReservations(reservations, ranAt);
+    const reservationCount = upsertReservations(pulled.rows, ranAt);
+
+    // Only trust "Guesty did not send it" when Guesty sent a whole answer:
+    // an empty or cut-short reply must never take the calendar down with it.
+    const removed =
+      pulled.complete && reservationCount > 0 ? clearVanished(ranAt) : 0;
 
     // every Guesty listing should have somewhere to keep its door code
     const created = syncProperties(ranAt);
 
     const message =
       `Synced ${listingCount} listings and ${reservationCount} reservations.` +
+      (removed
+        ? ` Took ${removed} ${removed === 1 ? "booking" : "bookings"} Guesty no longer lists off the calendar.`
+        : "") +
       (created ? ` Added ${created} ${created === 1 ? "property" : "properties"}.` : "");
     const result = {
       ok: true as const,
@@ -382,6 +398,35 @@ function upsertReservations(rows: any[], syncedAt: string): number {
   return seen;
 }
 
+/**
+ * Take bookings Guesty has stopped listing off the calendar.
+ *
+ * Updating what Guesty sends back is not enough on its own: a booking that
+ * is cancelled, moved or deleted can simply stop appearing in Guesty's list,
+ * and then nothing ever tells us. Every booking Guesty does send is stamped
+ * with this run's synced_at, so whatever is left with an older stamp is
+ * exactly what has gone missing.
+ *
+ * Such a row is marked "removed" rather than deleted, which isCancelled()
+ * hides like any cancellation — and if Guesty ever lists it again, the next
+ * upsert simply writes its real status back. Bookings already over are left
+ * alone: they are history, and Guesty dropping old stays from its list says
+ * nothing about whether they happened.
+ */
+function clearVanished(ranAt: string): number {
+  const today = ranAt.slice(0, 10);
+  const result = run(
+    `UPDATE reservations
+        SET status = 'removed', updated_at = ?
+      WHERE synced_at < ?
+        AND check_out >= ?
+        AND LOWER(COALESCE(status, '')) NOT LIKE '%cancel%'
+        AND LOWER(COALESCE(status, '')) NOT IN ('declined', 'expired', 'removed')`,
+    [ranAt, ranAt, today],
+  );
+  return Number(result?.changes ?? 0);
+}
+
 function recordRun(result: SyncResult): void {
   run(
     `INSERT INTO guesty_sync (id, last_run_at, last_status, last_message, listings_seen, reservations_seen)
@@ -437,7 +482,7 @@ export function occupiedListingIds(on: string): Set<string> {
        FROM reservations
       WHERE check_in <= ? AND check_out > ?
         AND LOWER(COALESCE(status, '')) NOT LIKE '%cancel%'
-        AND LOWER(COALESCE(status, '')) NOT IN ('declined', 'expired')`,
+        AND LOWER(COALESCE(status, '')) NOT IN ('declined', 'expired', 'removed')`,
     [on, on],
   );
   return new Set(rows.map((r) => r.guesty_listing_id));
