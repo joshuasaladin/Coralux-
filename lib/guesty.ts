@@ -25,6 +25,12 @@ const RENEW_MARGIN_MS = 10 * 60 * 1000;
 const PAGE_SIZE = 100;
 /** Guesty will not page past this; a guard against an endless loop. */
 const MAX_PAGES = 200;
+/**
+ * How far back the calendar reaches. Guesty is asked for this window
+ * explicitly: left to itself its list appears to cover only what is still to
+ * come, which leaves past months empty and drops guests already checked in.
+ */
+const HISTORY_DAYS = 365;
 
 export type SyncResult = {
   ok: boolean;
@@ -106,6 +112,16 @@ export async function getAccessToken(force = false): Promise<string> {
 
 // -------------------------------------------------------------------- http
 
+/** A refusal from Guesty, keeping the status so callers can tell kinds apart. */
+class GuestyHttpError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+  }
+}
+
 /** A GET against the Open API, retrying once on an expired token. */
 async function apiGet(path: string, params: Record<string, string>): Promise<any> {
   const url = `${API}${path}?${new URLSearchParams(params).toString()}`;
@@ -121,7 +137,10 @@ async function apiGet(path: string, params: Record<string, string>): Promise<any
 
     if (!res.ok) {
       const detail = await res.text().catch(() => "");
-      throw new Error(`Guesty ${path} failed (HTTP ${res.status}). ${detail.slice(0, 200)}`);
+      throw new GuestyHttpError(
+        `Guesty ${path} failed (HTTP ${res.status}). ${detail.slice(0, 200)}`,
+        res.status,
+      );
     }
     return res.json();
   }
@@ -199,26 +218,46 @@ export async function syncGuesty(): Promise<SyncResult> {
     const listings = (await fetchAll("/listings")).rows;
     const listingCount = upsertListings(listings, ranAt);
 
-    const pulled = await fetchAll("/reservations", {
-      // everything, cancellations included — the status is the point
-      fields: [
-        "_id", "listingId", "checkIn", "checkOut", "status", "source",
-        "integration", "guest", "guestsCount", "nightsCount",
-        "confirmationCode", "lastUpdatedAt",
-      ].join(" "),
-    });
+    const fields = [
+      "_id", "listingId", "checkIn", "checkOut", "status", "source",
+      "integration", "guest", "guestsCount", "nightsCount",
+      "confirmationCode", "lastUpdatedAt",
+    ].join(" ");
+    const since = daysBefore(ranAt, HISTORY_DAYS);
+
+    // Every stay that ends inside the window, whatever its status: past
+    // months, guests in the house right now, and everything to come.
+    let pulled: { rows: any[]; complete: boolean };
+    let windowed = true;
+    try {
+      pulled = await fetchAll("/reservations", {
+        fields,
+        filters: JSON.stringify([{ field: "checkOut", operator: "$gte", value: since }]),
+      });
+    } catch (err) {
+      if (!(err instanceof GuestyHttpError) || err.status !== 400) throw err;
+      // Guesty would not take the date filter. Fall back to its default list
+      // rather than fail the whole sync — but what that list covers is then
+      // unknown, so nothing below may read a missing booking as a removed one.
+      windowed = false;
+      pulled = await fetchAll("/reservations", { fields });
+    }
     const reservationCount = upsertReservations(pulled.rows, ranAt);
 
-    // Only trust "Guesty did not send it" when Guesty sent a whole answer:
-    // an empty or cut-short reply must never take the calendar down with it.
+    // Only trust "Guesty did not send it" when Guesty was asked for the whole
+    // window and sent a whole answer: a fallback, empty or cut-short reply
+    // must never take the calendar down with it.
     const removed =
-      pulled.complete && reservationCount > 0 ? clearVanished(ranAt) : 0;
+      windowed && pulled.complete && reservationCount > 0 ? clearVanished(ranAt, since) : 0;
 
     // every Guesty listing should have somewhere to keep its door code
     const created = syncProperties(ranAt);
 
     const message =
-      `Synced ${listingCount} listings and ${reservationCount} reservations.` +
+      `Synced ${listingCount} listings and ${reservationCount} reservations${spanOf(pulled.rows)}.` +
+      (windowed
+        ? ""
+        : " Guesty would not accept the date range, so past months may be missing.") +
       (removed
         ? ` Took ${removed} ${removed === 1 ? "booking" : "bookings"} Guesty no longer lists off the calendar.`
         : "") +
@@ -413,18 +452,54 @@ function upsertReservations(rows: any[], syncedAt: string): number {
  * alone: they are history, and Guesty dropping old stays from its list says
  * nothing about whether they happened.
  */
-function clearVanished(ranAt: string): number {
+function clearVanished(ranAt: string, since: string): number {
+  // Guesty was asked for every stay ending on or after `since`, so only a
+  // booking inside that window can be missing from its answer; and of those,
+  // only one not yet over is acted on. A guest checked in last week is still
+  // inside the window, so they are only ever cleared if Guesty truly dropped
+  // them.
   const today = ranAt.slice(0, 10);
   const result = run(
     `UPDATE reservations
         SET status = 'removed', updated_at = ?
       WHERE synced_at < ?
         AND check_out >= ?
+        AND check_out >= ?
         AND LOWER(COALESCE(status, '')) NOT LIKE '%cancel%'
         AND LOWER(COALESCE(status, '')) NOT IN ('declined', 'expired', 'removed')`,
-    [ranAt, ranAt, today],
+    [ranAt, ranAt, today, since],
   );
   return Number(result?.changes ?? 0);
+}
+
+/** The day `days` before the given timestamp, as YYYY-MM-DD. */
+function daysBefore(iso: string, days: number): string {
+  const d = new Date(iso);
+  d.setUTCDate(d.getUTCDate() - days);
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * " from Nov 2025 to Mar 2027" — what the reply actually covered, so the
+ * last-sync line shows at a glance whether past months came through.
+ */
+function spanOf(rows: any[]): string {
+  let first: string | null = null;
+  let last: string | null = null;
+  for (const row of rows) {
+    const inDay = asDate(row?.checkIn ?? row?.checkInDateLocalized);
+    const outDay = asDate(row?.checkOut ?? row?.checkOutDateLocalized);
+    if (inDay && (!first || inDay < first)) first = inDay;
+    if (outDay && (!last || outDay > last)) last = outDay;
+  }
+  if (!first || !last) return "";
+  const month = (day: string) =>
+    new Date(`${day}T00:00:00Z`).toLocaleDateString("en-GB", {
+      month: "short",
+      year: "numeric",
+      timeZone: "UTC",
+    });
+  return ` from ${month(first)} to ${month(last)}`;
 }
 
 function recordRun(result: SyncResult): void {
