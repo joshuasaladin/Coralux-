@@ -1117,11 +1117,18 @@ await step("reservations: the chip dot is filled while someone is staying", asyn
   }
 });
 
-await step("reservations: a cancelled booking stays visible, struck through", async () => {
-  const cancelled = page.locator('[data-entry="chip"][title*="(canceled)"]').first();
-  if (await cancelled.count() === 0) throw new Error("the cancelled booking vanished from the calendar");
-  const line = await cancelled.evaluate((el) => getComputedStyle(el).textDecorationLine);
-  if (!line.includes("line-through")) throw new Error(`cancelled booking is not struck through (${line})`);
+await step("reservations: a cancelled booking is off the calendar but still in the database", async () => {
+  const html = await page.content();
+  if (html.includes("Cancelled Guest")) {
+    throw new Error("a cancelled booking should not be drawn on the calendar");
+  }
+  // the row itself must survive — deleting it is what would make the next
+  // sync treat the booking as new again
+  const db = new Database("./data/coralux.db");
+  const row = db.prepare("SELECT status FROM reservations WHERE guesty_id = 'GR-3'").get();
+  db.close();
+  if (!row) throw new Error("the cancelled booking was deleted from the database");
+  if (row.status !== "canceled") throw new Error(`status should still say canceled, got ${row.status}`);
 });
 
 await step("reservations: the next fortnight lists arrivals and departures", async () => {

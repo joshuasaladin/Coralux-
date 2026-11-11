@@ -54,7 +54,13 @@ export default async function ReservationsPage({
   const from = days[0]!;
   const to = days[days.length - 1]!;
 
-  const all = reservationsBetween(from, to).filter((r) => !hidden.has(r.guesty_listing_id));
+  // A cancelled booking is not work anybody has to do, so it is simply not
+  // drawn. The row stays in the database with its new status — that is what
+  // makes the next sync leave it alone — it just has no place on a calendar
+  // of who is arriving and leaving.
+  const all = reservationsBetween(from, to)
+    .filter((r) => !hidden.has(r.guesty_listing_id))
+    .filter((r) => !isCancelled(r.status));
   const rows = all.map((r) => ({
     id: r.id,
     listingId: r.guesty_listing_id,
@@ -62,8 +68,6 @@ export default async function ReservationsPage({
     colour: Number(r.colour ?? 0),
     checkIn: r.check_in,
     checkOut: r.check_out,
-    status: r.status,
-    cancelled: isCancelled(r.status),
     channel: channelLabel(r.channel),
     guestName: seesGuests ? (r.guest_name as string | null) : null,
   }));

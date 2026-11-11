@@ -11,8 +11,6 @@ export type CalendarRow = {
   colour: number;
   checkIn: string;
   checkOut: string;
-  status: string;
-  cancelled: boolean;
   channel: string;
   /** Null unless the reader is allowed to see guest names. */
   guestName: string | null;
@@ -194,13 +192,10 @@ function Dot({ row, kind }: { row: CalendarRow; kind: "in" | "out" }) {
       style={{
         width: 8,
         height: 8,
-        background: kind === "in" && !row.cancelled ? colour.dot : "transparent",
-        border: `1.5px solid ${row.cancelled ? "var(--line-2)" : colour.dot}`,
-        opacity: row.cancelled ? 0.6 : 1,
+        background: kind === "in" ? colour.dot : "transparent",
+        border: `1.5px solid ${colour.dot}`,
       }}
-      title={`${kind === "in" ? "Check-in" : "Check-out"} — ${row.listingName}${
-        row.cancelled ? ` (${row.status})` : ""
-      }`}
+      title={`${kind === "in" ? "Check-in" : "Check-out"} — ${row.listingName}`}
     />
   );
 }
@@ -221,13 +216,8 @@ function EntryChip({
     <div
       data-entry="chip"
       className={`rounded px-1.5 py-1 leading-tight truncate ${wide ? "text-xs" : "text-[.7rem]"}`}
-      style={{
-        background: row.cancelled ? "transparent" : colour.bg,
-        color: row.cancelled ? "var(--ink-3)" : colour.fg,
-        border: row.cancelled ? "1px dashed var(--line-2)" : "1px solid transparent",
-        textDecoration: row.cancelled ? "line-through" : "none",
-      }}
-      title={`${kind === "in" ? "Check-in" : "Check-out"} — ${label}${row.cancelled ? ` (${row.status})` : ""} · ${row.channel}`}
+      style={{ background: colour.bg, color: colour.fg }}
+      title={`${kind === "in" ? "Check-in" : "Check-out"} — ${label} · ${row.channel}`}
     >
       <span className="font-semibold">{kind === "in" ? "In" : "Out"}</span> {label}
     </div>
