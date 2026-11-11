@@ -99,8 +99,8 @@ export default function ReservationCalendar({
                   {Number(day.slice(8, 10))}
                 </div>
 
-                {/* phones: a dot per movement, countable at arm's length */}
-                <div className="sm:hidden flex flex-wrap gap-1">
+                {/* phones: a mark per movement, countable at arm's length */}
+                <div className="sm:hidden flex flex-wrap items-center gap-1">
                   {entries.map(({ row, kind }) => (
                     <Dot key={`${row.id}-${kind}`} row={row} kind={kind} />
                   ))}
@@ -126,8 +126,8 @@ export default function ReservationCalendar({
           <strong style={{ color: "var(--ink-2)" }}>Out</strong> a check-out. A property keeps the
           same colour everywhere.{" "}
           <span className="sm:hidden">
-            On a phone a filled dot is a check-in and a hollow one a check-out — switch to Week for
-            the names.
+            On a phone a dot is a check-in and a dash a check-out — switch to Week for the
+            names.
           </span>
         </p>
       </div>
@@ -183,17 +183,23 @@ function WeekList({
   );
 }
 
+/**
+ * A dot for an arrival, a dash for a departure. Not filled versus hollow:
+ * the property chips above already use that for occupied versus empty, and
+ * one screen must not give the same mark two meanings.
+ */
 function Dot({ row, kind }: { row: CalendarRow; kind: "in" | "out" }) {
   const colour = listingColour(row.colour);
   return (
     <span
       data-entry="dot"
+      data-kind={kind}
       className="inline-block rounded-full"
       style={{
-        width: 8,
-        height: 8,
-        background: kind === "in" ? colour.dot : "transparent",
-        border: `1.5px solid ${colour.dot}`,
+        width: kind === "in" ? 8 : 11,
+        height: kind === "in" ? 8 : 3,
+        marginBlock: kind === "in" ? 0 : 2.5,
+        background: colour.dot,
       }}
       title={`${kind === "in" ? "Check-in" : "Check-out"} — ${row.listingName}`}
     />

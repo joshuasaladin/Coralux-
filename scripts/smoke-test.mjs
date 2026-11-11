@@ -1072,6 +1072,9 @@ await step("reservations: seed two properties and three bookings", async () => {
   booking.run("gr-1", "GR-1", "GL-A", guestyIso(0), guestyIso(2), "Wilhelmina Croes", "airbnb", "confirmed", stamp, stamp, stamp);
   booking.run("gr-2", "GR-2", "GL-B", guestyIso(0), guestyIso(3), "Marcelo Tromp", "bookingCom", "confirmed", stamp, stamp, stamp);
   booking.run("gr-3", "GR-3", "GL-A", guestyIso(1), guestyIso(4), "Cancelled Guest", "manual", "canceled", stamp, stamp, stamp);
+  // a guest only asking about the same nights as gr-1: Guesty's calendar
+  // does not show it, so ours must not either
+  booking.run("gr-5", "GR-5", "GL-A", guestyIso(0), guestyIso(2), "Inquiring Guest", "airbnb", "inquiry", stamp, stamp, stamp);
   // what the sync writes when Guesty stops listing a booking altogether
   booking.run("gr-4", "GR-4", "GL-B", guestyIso(1), guestyIso(3), "Vanished Guest", "airbnb", "removed", stamp, stamp, stamp);
   // the sync links a listing to the property of the same name; stand in for
@@ -1124,6 +1127,13 @@ await step("reservations: a cancelled booking is off the calendar but still in t
   if (html.includes("Cancelled Guest")) {
     throw new Error("a cancelled booking should not be drawn on the calendar");
   }
+  if (html.includes("Inquiring Guest")) {
+    throw new Error("an inquiry is not a booking and should not be drawn on the calendar");
+  }
+  const todaysIns = await page.locator('[data-entry="chip"][title^="Check-in — Smoke A"]').evaluateAll(
+    (els) => new Set(els.map((e) => e.getAttribute("title"))).size,
+  );
+  if (todaysIns !== 1) throw new Error(`Smoke A should have one check-in, found ${todaysIns}`);
   if (html.includes("Vanished Guest")) {
     throw new Error("a booking Guesty no longer lists should not be drawn on the calendar");
   }

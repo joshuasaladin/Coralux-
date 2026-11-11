@@ -1,4 +1,5 @@
 import { all, id as newId, logActivity, now, one, run } from "./db";
+import { CALENDAR_STATUSES, isOnCalendar } from "./reservations-shared";
 
 /**
  * Talking to the Guesty Open API.
@@ -112,6 +113,13 @@ export async function getAccessToken(force = false): Promise<string> {
 
 // -------------------------------------------------------------------- http
 
+/**
+ * isOnCalendar() as SQL: the status lower-cased with its underscores, dashes
+ * and spaces taken out, checked against the same list.
+ */
+const ON_CALENDAR_SQL = `REPLACE(REPLACE(REPLACE(LOWER(COALESCE(status, '')), '_', ''), '-', ''), ' ', '')
+  IN (${CALENDAR_STATUSES.map((s) => `'${s}'`).join(", ")})`;
+
 /** A refusal from Guesty, keeping the status so callers can tell kinds apart. */
 class GuestyHttpError extends Error {
   constructor(
@@ -173,6 +181,13 @@ async function fetchAll(
 
 // ------------------------------------------------------------------ shapes
 
+/** The stay's first or last day as the property's own calendar has it. */
+function localDay(row: any, end: "in" | "out"): string | null {
+  return end === "in"
+    ? asDate(row?.checkInDateLocalized) ?? asDate(row?.checkIn)
+    : asDate(row?.checkOutDateLocalized) ?? asDate(row?.checkOut);
+}
+
 /** Guesty hands dates back in several shapes; we only ever store the day. */
 function asDate(value: unknown): string | null {
   if (typeof value !== "string" || !value) return null;
@@ -219,7 +234,8 @@ export async function syncGuesty(): Promise<SyncResult> {
     const listingCount = upsertListings(listings, ranAt);
 
     const fields = [
-      "_id", "listingId", "checkIn", "checkOut", "status", "source",
+      "_id", "listingId", "checkIn", "checkOut",
+      "checkInDateLocalized", "checkOutDateLocalized", "status", "source",
       "integration", "guest", "guestsCount", "nightsCount",
       "confirmationCode", "lastUpdatedAt",
     ].join(" ");
@@ -255,6 +271,7 @@ export async function syncGuesty(): Promise<SyncResult> {
 
     const message =
       `Synced ${listingCount} listings and ${reservationCount} reservations${spanOf(pulled.rows)}.` +
+      offCalendar(pulled.rows) +
       (windowed
         ? ""
         : " Guesty would not accept the date range, so past months may be missing.") +
@@ -398,8 +415,11 @@ function upsertReservations(rows: any[], syncedAt: string): number {
   for (const row of rows) {
     const guestyId = text(row?._id) ?? text(row?.id);
     const listingId = text(row?.listingId) ?? text(row?.listing?._id);
-    const checkIn = asDate(row?.checkIn ?? row?.checkInDateLocalized);
-    const checkOut = asDate(row?.checkOut ?? row?.checkOutDateLocalized);
+    // The property's own calendar day, which is what Guesty's calendar shows.
+    // checkIn/checkOut are UTC timestamps: a late arrival in Aruba is already
+    // tomorrow in UTC, so the day cut from them can land one day off.
+    const checkIn = localDay(row, "in");
+    const checkOut = localDay(row, "out");
     // without these four there is nothing to put on a calendar
     if (!guestyId || !listingId || !checkIn || !checkOut) continue;
 
@@ -446,8 +466,8 @@ function upsertReservations(rows: any[], syncedAt: string): number {
  * with this run's synced_at, so whatever is left with an older stamp is
  * exactly what has gone missing.
  *
- * Such a row is marked "removed" rather than deleted, which isCancelled()
- * hides like any cancellation — and if Guesty ever lists it again, the next
+ * Such a row is marked "removed" rather than deleted, which isOnCalendar()
+ * leaves off like any cancellation — and if Guesty ever lists it again, the next
  * upsert simply writes its real status back. Bookings already over are left
  * alone: they are history, and Guesty dropping old stays from its list says
  * nothing about whether they happened.
@@ -465,11 +485,29 @@ function clearVanished(ranAt: string, since: string): number {
       WHERE synced_at < ?
         AND check_out >= ?
         AND check_out >= ?
-        AND LOWER(COALESCE(status, '')) NOT LIKE '%cancel%'
-        AND LOWER(COALESCE(status, '')) NOT IN ('declined', 'expired', 'removed')`,
+        AND ${ON_CALENDAR_SQL}`,
     [ranAt, ranAt, today, since],
   );
   return Number(result?.changes ?? 0);
+}
+
+/**
+ * " Not on the calendar: 31 inquiry, 12 canceled." — what Guesty sent that
+ * is deliberately not drawn, by status, so the last-sync line shows exactly
+ * why a number differs from Guesty's and any status nobody expected.
+ */
+function offCalendar(rows: any[]): string {
+  const counts = new Map<string, number>();
+  for (const row of rows) {
+    const status = text(row?.status) ?? "no status";
+    if (isOnCalendar(status)) continue;
+    counts.set(status, (counts.get(status) ?? 0) + 1);
+  }
+  if (counts.size === 0) return "";
+  const parts = [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([status, n]) => `${n} ${status}`);
+  return ` Not on the calendar: ${parts.join(", ")}.`;
 }
 
 /** The day `days` before the given timestamp, as YYYY-MM-DD. */
@@ -487,8 +525,8 @@ function spanOf(rows: any[]): string {
   let first: string | null = null;
   let last: string | null = null;
   for (const row of rows) {
-    const inDay = asDate(row?.checkIn ?? row?.checkInDateLocalized);
-    const outDay = asDate(row?.checkOut ?? row?.checkOutDateLocalized);
+    const inDay = localDay(row, "in");
+    const outDay = localDay(row, "out");
     if (inDay && (!first || inDay < first)) first = inDay;
     if (outDay && (!last || outDay > last)) last = outDay;
   }
@@ -547,17 +585,16 @@ export function listGuestyListings(): GuestyListing[] {
  * The listings with a guest in them on the given day.
  *
  * The check-out date does not count as occupied: the guest leaves that
- * morning, which is the whole point of a turnaround. Cancellations are
- * ignored the same way the calendar ignores them — the test matches
- * isCancelled() in lib/reservations-shared.ts.
+ * morning, which is the whole point of a turnaround. Only bookings the
+ * calendar shows count — the test is isOnCalendar() in
+ * lib/reservations-shared.ts.
  */
 export function occupiedListingIds(on: string): Set<string> {
   const rows = all<{ guesty_listing_id: string }>(
     `SELECT DISTINCT guesty_listing_id
        FROM reservations
       WHERE check_in <= ? AND check_out > ?
-        AND LOWER(COALESCE(status, '')) NOT LIKE '%cancel%'
-        AND LOWER(COALESCE(status, '')) NOT IN ('declined', 'expired', 'removed')`,
+        AND ${ON_CALENDAR_SQL}`,
     [on, on],
   );
   return new Set(rows.map((r) => r.guesty_listing_id));

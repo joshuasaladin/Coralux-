@@ -25,13 +25,25 @@ export function listingColour(index: number) {
 }
 
 /**
- * Whether a booking is off: cancelled, declined, expired, or "removed" —
- * the sync's own word for a booking Guesty has stopped listing. Anything
- * this says yes to is left off the calendar and out of the lists.
+ * The statuses Guesty's own calendar shows: a booking that actually holds the
+ * dates. Everything else stays off ours — above all an inquiry, which Guesty
+ * records the moment a guest merely asks about dates, often for the very same
+ * nights as the real booking. Showing those is what put two check-ins on one
+ * property on one day.
+ *
+ * This is a list of what to show rather than what to hide, so a status
+ * nobody has seen before stays off the calendar instead of turning into a
+ * phantom stay; the sync's last-run line names any such status.
  */
-export function isCancelled(status: string | null | undefined): boolean {
-  const s = (status ?? "").toLowerCase();
-  return s.includes("cancel") || s === "declined" || s === "expired" || s === "removed";
+export const CALENDAR_STATUSES = ["confirmed", "reserved", "checkedin", "checkedout"] as const;
+
+/** Guesty writes these as checked_in, checkedIn and so on; compare loosely. */
+export function statusKey(status: string | null | undefined): string {
+  return (status ?? "").toLowerCase().replace(/[^a-z]/g, "");
+}
+
+export function isOnCalendar(status: string | null | undefined): boolean {
+  return (CALENDAR_STATUSES as readonly string[]).includes(statusKey(status));
 }
 
 export function isoDate(d: Date): string {

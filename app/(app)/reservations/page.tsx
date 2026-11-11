@@ -10,7 +10,7 @@ import { timeAgo } from "@/lib/format";
 import {
   addDays,
   channelLabel,
-  isCancelled,
+  isOnCalendar,
   isoDate,
   listingColour,
   monthGrid,
@@ -54,13 +54,13 @@ export default async function ReservationsPage({
   const from = days[0]!;
   const to = days[days.length - 1]!;
 
-  // A cancelled booking is not work anybody has to do, so it is simply not
-  // drawn. The row stays in the database with its new status — that is what
-  // makes the next sync leave it alone — it just has no place on a calendar
-  // of who is arriving and leaving.
+  // Only what Guesty's own calendar shows: a cancellation, an inquiry or a
+  // lapsed hold is not a stay. The rows stay in the database with their
+  // status — that is what lets the next sync recognise them — they just have
+  // no place on a calendar of who is arriving and leaving.
   const all = reservationsBetween(from, to)
     .filter((r) => !hidden.has(r.guesty_listing_id))
-    .filter((r) => !isCancelled(r.status));
+    .filter((r) => isOnCalendar(r.status));
   const rows = all.map((r) => ({
     id: r.id,
     listingId: r.guesty_listing_id,
@@ -77,7 +77,7 @@ export default async function ReservationsPage({
   const horizonTo = addDays(today, 14);
   const upcoming = reservationsBetween(horizonFrom, horizonTo)
     .filter((r) => !hidden.has(r.guesty_listing_id))
-    .filter((r) => !isCancelled(r.status));
+    .filter((r) => isOnCalendar(r.status));
 
   const arrivals = upcoming
     .filter((r) => r.check_in >= horizonFrom && r.check_in <= horizonTo)
