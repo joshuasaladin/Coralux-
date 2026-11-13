@@ -331,22 +331,23 @@ export function syncInvoiceStatus(invoiceId: string, user?: User) {
 
 // ------------------------------------------------------------ notes & files
 
-export function listNotes(entity: string, entityId: string) {
+/** sharedOnly: what staff may read where a page shows them notes at all. */
+export function listNotes(entity: string, entityId: string, sharedOnly = false) {
   return all<Row>(
     `SELECT n.*, u.name AS author_name
        FROM notes n LEFT JOIN users u ON u.id = n.author_id
-      WHERE n.entity = ? AND n.entity_id = ?
+      WHERE n.entity = ? AND n.entity_id = ? ${sharedOnly ? "AND n.shared = 1" : ""}
       ORDER BY n.pinned DESC, n.created_at DESC`,
     [entity, entityId],
   );
 }
 
-export function addNote(entity: string, entityId: string, body: string, user: User) {
+export function addNote(entity: string, entityId: string, body: string, user: User, shared = false) {
   const noteId = newId();
   run(
-    `INSERT INTO notes (id, entity, entity_id, body, author_id, pinned, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, 0, ?, ?)`,
-    [noteId, entity, entityId, body, user.id, now(), now()],
+    `INSERT INTO notes (id, entity, entity_id, body, author_id, pinned, shared, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?)`,
+    [noteId, entity, entityId, body, user.id, shared ? 1 : 0, now(), now()],
   );
   logActivity(entity, entityId, "note", "Note added", user.id);
   return noteId;

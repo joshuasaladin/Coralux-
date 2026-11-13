@@ -61,6 +61,8 @@ CREATE TABLE IF NOT EXISTS property_facts (
   value         TEXT,
   staff_visible INTEGER NOT NULL DEFAULT 1,
   sort          INTEGER NOT NULL DEFAULT 0,
+  -- who added it: staff may change what they added themselves, nothing else
+  created_by    TEXT,
   created_at    TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_property_facts_property ON property_facts(property_id);
@@ -364,6 +366,10 @@ CREATE TABLE IF NOT EXISTS notes (
   body       TEXT NOT NULL,
   author_id  TEXT REFERENCES users(id) ON DELETE SET NULL,
   pinned     INTEGER NOT NULL DEFAULT 0,
+  -- where a page lets staff read notes (Properties), only shared ones show
+  -- to them. 0 by default: every note written before staff could read
+  -- notes was written as private, and stays that way.
+  shared     INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );

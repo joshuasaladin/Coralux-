@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { localToday } from "@/lib/clock";
 import GuestySyncButton from "@/components/GuestySyncButton";
 import ReservationCalendar from "@/components/ReservationCalendar";
 import Icon from "@/components/Icon";
@@ -34,12 +35,14 @@ export default async function ReservationsPage({
   const seesGuests = atLeast(user.role, "manager");
 
   const view = query.view === "week" ? "week" : "month";
-  const today = isoDate(new Date());
+  // Aruba's date, not the server's UTC one — see lib/clock.ts
+  const today = localToday();
   const anchor = typeof query.on === "string" && /^\d{4}-\d{2}-\d{2}$/.test(query.on) ? query.on : today;
 
   const listings = listGuestyListings();
-  // a filled dot on the chip means somebody is in there right now
-  const occupied = occupiedListingIds(today);
+  // a filled dot on the chip means somebody is in there right now: from 4 PM
+  // on the day they arrive until 11 AM on the day they leave
+  const occupied = occupiedListingIds();
   // ?hide=a,b keeps the filter in the URL, so a filtered view is shareable
   const hidden = new Set(
     typeof query.hide === "string" ? query.hide.split(",").filter(Boolean) : [],
@@ -236,7 +239,7 @@ function PropertyFilter({
                 border: `1px solid ${off ? "var(--line-2)" : "transparent"}`,
                 textDecoration: off ? "line-through" : "none",
               }}
-              title={`${busy ? "Occupied today" : "Empty today"} · ${
+              title={`${busy ? "Occupied now" : "Empty now"} · ${
                 off ? "hidden, click to show" : "click to hide"
               }`}
             >
@@ -260,9 +263,10 @@ function PropertyFilter({
       </div>
 
       <p className="text-xs mt-2.5" style={{ color: "var(--ink-3)" }}>
-        A <strong style={{ color: "var(--ink-2)" }}>filled</strong> dot means someone is staying
-        there today, a <strong style={{ color: "var(--ink-2)" }}>hollow</strong> one that it is
-        empty — {full} of {listings.length} occupied. Click a property to hide it.
+        A <strong style={{ color: "var(--ink-2)" }}>filled</strong> dot means a guest is in
+        right now, a <strong style={{ color: "var(--ink-2)" }}>hollow</strong> one that it is
+        empty — {full} of {listings.length} occupied. A guest counts as in from 4 PM on arrival
+        day until 11 AM on departure day. Click a property to hide it.
       </p>
     </div>
   );

@@ -24,11 +24,12 @@ export default async function PropertyDetailPage({
   const property = getProperty(id);
   if (!property) notFound();
 
-  // A cleaner gets what they need on site and nothing else: no owner, no
-  // internal notes, no history, and only the details marked as shared.
+  // Staff get what they need on site and nothing else: no owner, no files,
+  // no history — and of Good to know and the notes, only what is shared.
   const full = seesEverything(user);
   const canEdit = atLeast(user.role, "manager");
   const facts = listFacts(id, !full);
+  const notes = listNotes("properties", id, !full);
 
   const mapHref = property.address
     ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(property.address)}`
@@ -87,7 +88,7 @@ export default async function PropertyDetailPage({
             )}
           </Card>
 
-          <PropertyFacts propertyId={id} facts={facts} canEdit={canEdit} />
+          <PropertyFacts propertyId={id} facts={facts} isManager={full} currentUserId={user.id} />
 
           {full && (
             <Card title="Owner">
@@ -110,11 +111,22 @@ export default async function PropertyDetailPage({
           {/* documents against a property are the management agreement, the
               owner's paperwork and the like — not a cleaner's business */}
           {full && (
+            <FilesPanel entity="properties" entityId={id} files={listFilesFor("properties", id)} />
+          )}
+
+          <NotesPanel
+            entity="properties"
+            entityId={id}
+            notes={notes}
+            sharing={{
+              isManager: full,
+              currentUserId: user.id,
+              canDeleteAny: atLeast(user.role, "admin"),
+            }}
+          />
+
+          {full && (
             <>
-              <FilesPanel entity="properties" entityId={id} files={listFilesFor("properties", id)} />
-
-              <NotesPanel entity="properties" entityId={id} notes={listNotes("properties", id)} />
-
               <Card title="History">
                 <History events={listActivity("properties", id)} />
               </Card>

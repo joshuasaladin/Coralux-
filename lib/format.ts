@@ -1,3 +1,4 @@
+import { localToday } from "./clock";
 export function money(amount: unknown, currency = "AWG"): string {
   const n = Number(amount ?? 0);
   if (!Number.isFinite(n)) return "—";
@@ -16,8 +17,9 @@ export function compactMoney(amount: unknown, currency = "AWG"): string {
   return money(n, currency);
 }
 
+/** Today in Aruba — see lib/clock.ts for why not the server's own date. */
 export function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
+  return localToday();
 }
 
 export function formatDate(value: unknown): string {
@@ -44,7 +46,7 @@ export function daysFromToday(value: unknown): number | null {
   const target = new Date(String(value));
   if (Number.isNaN(target.getTime())) return null;
   const a = new Date(target.toISOString().slice(0, 10));
-  const b = new Date(new Date().toISOString().slice(0, 10));
+  const b = new Date(localToday());
   return Math.round((a.getTime() - b.getTime()) / 864e5);
 }
 

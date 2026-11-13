@@ -36,6 +36,14 @@ function addMissingColumns(db: Database.Database) {
     if (!props.has(col)) db.exec(`ALTER TABLE properties ADD COLUMN ${col} ${type}`);
   }
 
+  if (!columnNames(db, "property_facts").has("created_by")) {
+    db.exec(`ALTER TABLE property_facts ADD COLUMN created_by TEXT`);
+  }
+  if (!columnNames(db, "notes").has("shared")) {
+    // existing notes were all written while only managers could read them
+    db.exec(`ALTER TABLE notes ADD COLUMN shared INTEGER NOT NULL DEFAULT 0`);
+  }
+
   const steps = columnNames(db, "listing_steps");
   if (!steps.has("section")) db.exec(`ALTER TABLE listing_steps ADD COLUMN section TEXT`);
   if (!steps.has("note")) db.exec(`ALTER TABLE listing_steps ADD COLUMN note TEXT`);

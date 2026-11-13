@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { localToday } from "@/lib/clock";
 import CleaningWeekGrid from "@/components/CleaningWeekGrid";
 import Icon from "@/components/Icon";
 import { PageHeader } from "@/components/ui";
@@ -15,9 +16,10 @@ export default async function CleaningSchedulePage({
   await requireSection("cleaning", "staff");
   const query = await searchParams;
 
-  const today = new Date();
+  // Aruba's date, not the server's UTC one — see lib/clock.ts
+  const todayIso = localToday();
   const monthParam = typeof query.month === "string" ? query.month : null;
-  const cursor = monthParam ? new Date(`${monthParam}-01T00:00:00`) : new Date(today.getFullYear(), today.getMonth(), 1);
+  const cursor = new Date(`${monthParam ?? todayIso.slice(0, 7)}-01T00:00:00`);
   if (Number.isNaN(cursor.getTime())) cursor.setTime(Date.now());
 
   const year = cursor.getFullYear();
@@ -28,7 +30,6 @@ export default async function CleaningSchedulePage({
   for (const week of weeks) shiftsByWeek.set(week.start, []);
   for (const shift of shifts) shiftsByWeek.get(shift.week_start)?.push(shift);
 
-  const todayIso = today.toISOString().slice(0, 10);
 
   const prev = new Date(year, month - 2, 1);
   const next = new Date(year, month, 1);

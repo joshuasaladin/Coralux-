@@ -1,5 +1,6 @@
 import { all, id as newId, logActivity, now, one, run } from "./db";
 import { CALENDAR_STATUSES, isOnCalendar } from "./reservations-shared";
+import { CHECK_IN_TIME, CHECK_OUT_TIME, localNow, minutesOf } from "./clock";
 
 /**
  * Talking to the Guesty Open API.
@@ -582,20 +583,25 @@ export function listGuestyListings(): GuestyListing[] {
 /** Reservations touching a date range, cancellations included so the page can
  * decide whether to show them. */
 /**
- * The listings with a guest in them on the given day.
+ * The listings with a guest in them at this moment, Aruba time.
  *
- * The check-out date does not count as occupied: the guest leaves that
- * morning, which is the whole point of a turnaround. Only bookings the
- * calendar shows count — the test is isOnCalendar() in
+ * A stay runs from check-in time on its first day to check-out time on its
+ * last (4 PM and 11 AM, lib/clock.ts), so on a changeover day a property is
+ * occupied until 11, empty until 4, and occupied again after. Only bookings
+ * the calendar shows count — the test is isOnCalendar() in
  * lib/reservations-shared.ts.
  */
-export function occupiedListingIds(on: string): Set<string> {
+export function occupiedListingIds(at: Date = new Date()): Set<string> {
+  const { day, minutes } = localNow(at);
+  const arrived = minutes >= minutesOf(CHECK_IN_TIME) ? 1 : 0;
+  const notYetLeft = minutes < minutesOf(CHECK_OUT_TIME) ? 1 : 0;
   const rows = all<{ guesty_listing_id: string }>(
     `SELECT DISTINCT guesty_listing_id
        FROM reservations
-      WHERE check_in <= ? AND check_out > ?
+      WHERE (check_in < ? OR (check_in = ? AND ? = 1))
+        AND (check_out > ? OR (check_out = ? AND ? = 1))
         AND ${ON_CALENDAR_SQL}`,
-    [on, on],
+    [day, day, arrived, day, day, notYetLeft],
   );
   return new Set(rows.map((r) => r.guesty_listing_id));
 }

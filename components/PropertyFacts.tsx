@@ -15,20 +15,23 @@ type Fact = Record<string, any>;
 
 /**
  * Whatever else is worth keeping about a property, in whatever words suit —
- * bin day, how often pest control comes, which day the pool is done. Each
- * entry can be hidden from the cleaners if it is not their business.
+ * bin day, how often pest control comes, which day the pool is done.
  *
- * Read-only for staff: they see the entries meant for them and nothing to
- * press.
+ * A manager sees every entry and can make any of them private. Staff see the
+ * shared ones, can add their own — always shared, with no choice to make —
+ * and can change or remove only what they added. The server enforces all of
+ * this again (canChangeFact); hiding the buttons is only the courtesy.
  */
 export default function PropertyFacts({
   propertyId,
   facts,
-  canEdit,
+  isManager,
+  currentUserId,
 }: {
   propertyId: string;
   facts: Fact[];
-  canEdit: boolean;
+  isManager: boolean;
+  currentUserId: string;
 }) {
   const [state, addAction] = useActionState<ActionState, FormData>(addPropertyFactAction, null);
   const formRef = useRef<HTMLFormElement>(null);
@@ -40,18 +43,14 @@ export default function PropertyFacts({
         style={{ borderBottom: "1px solid var(--line)" }}
       >
         <h2 className="text-sm font-semibold">Good to know</h2>
-        {canEdit && (
-          <span className="text-xs" style={{ color: "var(--ink-3)" }}>
-            anything you want to keep here
-          </span>
-        )}
+        <span className="text-xs" style={{ color: "var(--ink-3)" }}>
+          {isManager ? "anything you want to keep here" : "shared with the team"}
+        </span>
       </header>
 
       {facts.length === 0 ? (
         <p className="text-sm p-4" style={{ color: "var(--ink-3)" }}>
-          {canEdit
-            ? "Nothing yet — add the bin day, the pool schedule, how often pest control comes."
-            : "Nothing recorded for this property yet."}
+          Nothing yet — add the bin day, the pool schedule, how often pest control comes.
         </p>
       ) : (
         <ul>
@@ -60,43 +59,47 @@ export default function PropertyFacts({
               key={fact.id}
               propertyId={propertyId}
               fact={fact}
-              canEdit={canEdit}
+              canEdit={isManager || fact.created_by === currentUserId}
+              canShare={isManager}
               bordered={i > 0}
             />
           ))}
         </ul>
       )}
 
-      {canEdit && (
-        <div className="p-4" style={{ borderTop: "1px solid var(--line)" }}>
-          <form
-            ref={formRef}
-            action={async (fd) => {
-              await addAction(fd);
-              formRef.current?.reset();
-            }}
-            className="flex flex-wrap items-center gap-2"
-          >
-            <input type="hidden" name="__id" value={propertyId} />
-            <input
-              name="label"
-              className="input"
-              style={{ width: "auto", minWidth: 0, flex: "1 1 12rem" }}
-              placeholder="Add something — e.g. Garbage collection"
-              aria-label="Add a detail"
-            />
-            <SubmitButton className="btn btn-sm" pendingLabel="Adding…">
-              <Icon name="plus" className="w-3.5 h-3.5" />
-              Add
-            </SubmitButton>
-          </form>
-          {state?.error && (
-            <p className="text-xs mt-1.5" style={{ color: "var(--bad-fg)" }}>
-              {state.error}
-            </p>
-          )}
-        </div>
-      )}
+      <div className="p-4" style={{ borderTop: "1px solid var(--line)" }}>
+        <form
+          ref={formRef}
+          action={async (fd) => {
+            await addAction(fd);
+            formRef.current?.reset();
+          }}
+          className="flex flex-wrap items-center gap-2"
+        >
+          <input type="hidden" name="__id" value={propertyId} />
+          <input
+            name="label"
+            className="input"
+            style={{ width: "auto", minWidth: 0, flex: "1 1 12rem" }}
+            placeholder="Add something — e.g. Garbage collection"
+            aria-label="Add a detail"
+          />
+          <SubmitButton className="btn btn-sm" pendingLabel="Adding…">
+            <Icon name="plus" className="w-3.5 h-3.5" />
+            Add
+          </SubmitButton>
+        </form>
+        {!isManager && (
+          <p className="text-xs mt-1.5" style={{ color: "var(--ink-3)" }}>
+            Anything you add here is shared with the team.
+          </p>
+        )}
+        {state?.error && (
+          <p className="text-xs mt-1.5" style={{ color: "var(--bad-fg)" }}>
+            {state.error}
+          </p>
+        )}
+      </div>
     </section>
   );
 }
@@ -105,11 +108,13 @@ function FactRow({
   propertyId,
   fact,
   canEdit,
+  canShare,
   bordered,
 }: {
   propertyId: string;
   fact: Fact;
   canEdit: boolean;
+  canShare: boolean;
   bordered: boolean;
 }) {
   const [label, setLabel] = useState<string>(fact.label ?? "");
@@ -170,6 +175,7 @@ function FactRow({
         />
 
         <div className="flex items-center gap-1 shrink-0 ml-auto">
+          {canShare && (
           <button
             type="button"
             className={`chip ${visible ? "chip-info" : "chip-muted"}`}
@@ -191,6 +197,7 @@ function FactRow({
             <Icon name={visible ? "users" : "lock"} className="w-3 h-3" />
             {visible ? "Shared" : "Private"}
           </button>
+          )}
 
           <form action={deletePropertyFactAction}>
             <input type="hidden" name="__id" value={propertyId} />

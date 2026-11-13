@@ -2,6 +2,31 @@ import { chromium } from "playwright";
 import Database from "better-sqlite3";
 
 const base = "http://localhost:3000";
+
+/**
+ * The app runs on Aruba time (lib/clock.ts), whatever the machine's clock
+ * says, so any test about "today" has to ask Aruba too — not the test
+ * runner's UTC, which is already tomorrow every evening from 8 PM.
+ */
+const aruba = (() => {
+  const fmt = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Aruba", year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+  });
+  const parts = Object.fromEntries(fmt.formatToParts(new Date()).map((p) => [p.type, p.value]));
+  const iso = `${parts.year}-${parts.month}-${parts.day}`;
+  return {
+    iso,
+    dow: new Date(`${iso}T00:00:00Z`).getUTCDay(), // 0=Sun..6=Sat
+    minutes: Number(parts.hour) * 60 + Number(parts.minute),
+    /** Aruba's date `offset` days from today, YYYY-MM-DD. */
+    day(offset) {
+      const d = new Date(`${iso}T00:00:00Z`);
+      d.setUTCDate(d.getUTCDate() + offset);
+      return d.toISOString().slice(0, 10);
+    },
+  };
+})();
 const out = process.argv[2] ?? "./screenshots";
 const browser = await chromium.launch(
   process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {},
@@ -408,6 +433,96 @@ await step("properties: a cleaner gets the codes but none of the rest", async ()
   await page.waitForTimeout(1200);
 });
 
+await step("properties: staff read and add shared notes and details, never private ones", async () => {
+  // the manager leaves one private and one shared note on the villa
+  await page.goto(`${base}/properties`);
+  await page.click("text=Villa Coral Bay");
+  await page.waitForSelector("text=Getting in");
+  const notes = page.locator('section:has(h2:has-text("Notes"))');
+  await notes.locator('textarea[name="body"]').fill("Manager private note");
+  await notes.locator('button:has-text("Add note")').click();
+  await page.waitForSelector("text=Manager private note");
+  await notes.locator('textarea[name="body"]').fill("Manager shared note");
+  await notes.locator('button[aria-label="this new note — private"]').click(); // share it
+  await notes.locator('button:has-text("Add note")').click();
+  await page.waitForSelector("text=Manager shared note");
+  const villaUrl = page.url();
+
+  // give Dwight (staff) the Properties section, as a manager would
+  await page.goto(`${base}/admin`);
+  await page.waitForSelector("text=Access control");
+  await page.click('button:has-text("Dwight Tromp")');
+  await page.waitForSelector("text=Select all");
+  await page.click('button:has-text("Clear all")');
+  await page.waitForTimeout(700);
+  await page.click('input[aria-label="Dwight Tromp — Properties"]');
+  await page.waitForTimeout(700);
+
+  const ctx = await browser.newContext();
+  const sp = await ctx.newPage();
+  await sp.goto(`${base}/login`);
+  await sp.fill('input[name="email"]', "dwight@coralux.aw");
+  await sp.fill('input[name="password"]', "coralux2026");
+  await sp.click('button[type="submit"]');
+  await sp.waitForURL((u) => !u.pathname.startsWith("/login"), { timeout: 20000 });
+  await sp.goto(villaUrl);
+  await sp.waitForSelector("text=Getting in");
+
+  const seen = await sp.content();
+  if (!seen.includes("Manager shared note")) throw new Error("staff should see a shared note");
+  if (seen.includes("Manager private note")) throw new Error("staff must not see a private note, not even in the page source");
+  if (seen.includes("Owner payout day")) throw new Error("staff must not see a private detail");
+  for (const word of ["Private", "Shared"]) {
+    if (await sp.locator(`button:has-text("${word}")`).count() > 0) {
+      throw new Error(`staff should not be offered a ${word} button`);
+    }
+  }
+  // a manager's detail is there to read, not to edit
+  if (await sp.locator('input[aria-label="Value for Garbage collection"]').count() > 0) {
+    throw new Error("staff should not be able to edit a detail a manager added");
+  }
+
+  // staff add a note and a detail of their own
+  const staffNotes = sp.locator('section:has(h2:has-text("Notes"))');
+  await staffNotes.locator('textarea[name="body"]').fill("Cleaner note: back gate sticks");
+  await staffNotes.locator('button:has-text("Add note")').click();
+  await sp.waitForSelector("text=Cleaner note: back gate sticks");
+  await sp.fill('input[aria-label="Add a detail"]', "Pool cleaner");
+  await sp.locator('form:has(input[aria-label="Add a detail"]) button[type="submit"]').click();
+  await sp.waitForSelector('input[aria-label="Value for Pool cleaner"]');
+  await sp.fill('input[aria-label="Value for Pool cleaner"]', "Thursdays");
+  await sp.waitForTimeout(1500); // the field saves itself after a pause
+  await ctx.close();
+
+  // stored as shared, and credited to the person who added it
+  const db = new Database("./data/coralux.db");
+  const dwight = db.prepare("SELECT id FROM users WHERE email = 'dwight@coralux.aw'").get();
+  const note = db.prepare("SELECT shared, author_id FROM notes WHERE body = 'Cleaner note: back gate sticks'").get();
+  const fact = db.prepare("SELECT staff_visible, created_by, value FROM property_facts WHERE label = 'Pool cleaner'").get();
+  const privateNote = db.prepare("SELECT shared FROM notes WHERE body = 'Manager private note'").get();
+  db.close();
+  if (!note || note.shared !== 1 || note.author_id !== dwight.id) throw new Error("a staff note must be saved as shared");
+  if (!fact || fact.staff_visible !== 1 || fact.created_by !== dwight.id) throw new Error("a staff detail must be saved as shared");
+  if (fact.value !== "Thursdays") throw new Error(`staff should be able to fill in their own detail, got ${fact.value}`);
+  if (privateNote.shared !== 0) throw new Error("the manager's note should have stayed private");
+
+  // and the manager sees everything, including what staff added
+  await page.goto(villaUrl);
+  const manager = await page.content();
+  for (const want of ["Manager private note", "Manager shared note", "Cleaner note: back gate sticks", "Owner payout day"]) {
+    if (!manager.includes(want)) throw new Error(`manager should see: ${want}`);
+  }
+  if ((await page.inputValue('input[aria-label="Value for Pool cleaner"]')) !== "Thursdays") {
+    throw new Error("manager should see the value staff filled in");
+  }
+
+  await page.goto(`${base}/admin`);
+  await page.click('button:has-text("Dwight Tromp")');
+  await page.waitForSelector('button:has-text("Reset to role defaults")');
+  await page.click('button:has-text("Reset to role defaults")');
+  await page.waitForTimeout(1200);
+});
+
 await step("admin only counts the sections actually in use", async () => {
   await page.goto(`${base}/admin`);
   await page.waitForSelector("text=What the database holds");
@@ -738,8 +853,7 @@ await step("month navigation works", async () => {
 await step("cleaning grid highlights only today, not a static Sun/Sat", async () => {
   await page.goto(`${base}/cleaning`);
   await page.waitForSelector("text=current");
-  const todayIso = new Date().toISOString().slice(0, 10);
-  const todayDow = new Date().getDay(); // 0=Sun..6=Sat
+  const todayDow = aruba.dow; // 0=Sun..6=Sat, in Aruba
 
   const currentDetails = page.locator("details", { has: page.locator("text=current") }).first();
   const headers = currentDetails.locator("table thead th");
@@ -1040,11 +1154,7 @@ await step("an admin cannot edit their own access", async () => {
 // needs a fake API on a port); here we seed the two tables the sync writes
 // and check the page built on top of them — colours, filtering, the week
 // view, cancellations and, most importantly, who gets to see guest names.
-const guestyIso = (offset) => {
-  const d = new Date();
-  d.setDate(d.getDate() + offset);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-};
+const guestyIso = (offset) => aruba.day(offset);
 
 await step("reservations: says so plainly before the first sync", async () => {
   await page.goto(`${base}/reservations`);
@@ -1064,6 +1174,7 @@ await step("reservations: seed two properties and three bookings", async () => {
   listing.run("gl-b", "GL-B", "Smoke Villa B", "Smoke B", 1, stamp, stamp, stamp);
   // no bookings at all: the empty property the occupancy dot has to show
   listing.run("gl-c", "GL-C", "Smoke Villa C", "Smoke C", 2, stamp, stamp, stamp);
+  listing.run("gl-d", "GL-D", "Smoke Villa D", "Smoke D", 3, stamp, stamp, stamp);
   const booking = db.prepare(
     `INSERT INTO reservations (id, guesty_id, guesty_listing_id, check_in, check_out, guest_name,
                                channel, status, synced_at, created_at, updated_at)
@@ -1075,6 +1186,8 @@ await step("reservations: seed two properties and three bookings", async () => {
   // a guest only asking about the same nights as gr-1: Guesty's calendar
   // does not show it, so ours must not either
   booking.run("gr-5", "GR-5", "GL-A", guestyIso(0), guestyIso(2), "Inquiring Guest", "airbnb", "inquiry", stamp, stamp, stamp);
+  // arrived yesterday, leaves tomorrow: in the house whatever the hour
+  booking.run("gr-6", "GR-6", "GL-D", guestyIso(-1), guestyIso(1), "Midstay Guest", "airbnb", "confirmed", stamp, stamp, stamp);
   // what the sync writes when Guesty stops listing a booking altogether
   booking.run("gr-4", "GR-4", "GL-B", guestyIso(1), guestyIso(3), "Vanished Guest", "airbnb", "removed", stamp, stamp, stamp);
   // the sync links a listing to the property of the same name; stand in for
@@ -1106,19 +1219,26 @@ await step("reservations: each property keeps its own colour on the calendar", a
   if (!a || a === b) throw new Error(`two properties should not share a colour (${a} vs ${b})`);
 });
 
-await step("reservations: the chip dot is filled while someone is staying", async () => {
+await step("reservations: the chip dot is filled only while a guest is in", async () => {
   const dot = async (name) =>
     page.locator(`a.chip:has-text("${name}") [data-occupied]`).first().evaluate((el) => ({
       occupied: el.dataset.occupied,
       filled: getComputedStyle(el).backgroundColor !== "rgba(0, 0, 0, 0)",
     }));
-  const staying = await dot("Smoke A"); // checked in today, leaves in two days
-  if (staying.occupied !== "yes" || !staying.filled) {
-    throw new Error("an occupied property should have a filled dot");
+  const mid = await dot("Smoke D"); // arrived yesterday, leaves tomorrow
+  if (mid.occupied !== "yes" || !mid.filled) {
+    throw new Error("a guest mid-stay should give a filled dot");
   }
   const empty = await dot("Smoke C"); // no bookings at all
   if (empty.occupied !== "no" || empty.filled) {
     throw new Error("an empty property should have a hollow dot");
+  }
+  // Smoke A arrives today: in only from 4 PM, Aruba time
+  const arriving = await dot("Smoke A");
+  const shouldBeIn = aruba.minutes >= 16 * 60;
+  if ((arriving.occupied === "yes") !== shouldBeIn || arriving.filled !== shouldBeIn) {
+    const hhmm = `${String(Math.floor(aruba.minutes / 60)).padStart(2, "0")}:${String(aruba.minutes % 60).padStart(2, "0")}`;
+    throw new Error(`a guest arriving today should be ${shouldBeIn ? "in" : "not in yet"} at ${hhmm} Aruba time`);
   }
 });
 

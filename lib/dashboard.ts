@@ -1,10 +1,12 @@
 import { all, one } from "./db";
+import { localToday } from "./clock";
 import type { Role } from "./auth";
 import { atLeast } from "./auth";
 import { isEnabled } from "./entities";
 import type { Row } from "./records";
 
-const today = () => new Date().toISOString().slice(0, 10);
+// Aruba's date, not the server's UTC one — see lib/clock.ts
+const today = () => localToday();
 const plusDays = (n: number) => {
   const d = new Date();
   d.setDate(d.getDate() + n);

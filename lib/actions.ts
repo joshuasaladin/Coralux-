@@ -33,9 +33,11 @@ import {
 import { clearShift, upsertShift } from "./cleaning";
 import {
   addFact,
+  canChangeFact,
   createProperty,
   deleteFact,
   deleteProperty,
+  getFact,
   setFact,
   setFactVisibility,
   updateProperty,
@@ -193,18 +195,42 @@ export async function addNoteAction(
   const body = String(form.get("body") ?? "").trim();
   if (!body) return { error: "Write something first." };
 
-  addNote(entity, entityId, body, user);
+  // On a property, staff read and write notes too. What they write is always
+  // shared — whatever the form says — and a manager picks for themselves.
+  let shared = false;
+  if (entity === "properties") {
+    if (!canAccessSection(user, "properties")) return { error: "Not permitted." };
+    shared = atLeast(user.role, "manager") ? form.get("shared") === "1" : true;
+  }
+
+  addNote(entity, entityId, body, user, shared);
   revalidatePath(`/${entity}/${entityId}`);
   return { ok: "Note added." };
 }
 
 export async function togglePinNoteAction(form: FormData) {
-  await requireUser();
+  const user = await requireUser();
   const noteId = String(form.get("note_id") ?? "");
   const entity = String(form.get("__entity") ?? "");
   const entityId = String(form.get("__id") ?? "");
+  // pinning reorders the notes for everyone; on a property that is a manager's call
+  if (entity === "properties" && !atLeast(user.role, "manager")) return;
   run(`UPDATE notes SET pinned = CASE pinned WHEN 1 THEN 0 ELSE 1 END WHERE id = ?`, [noteId]);
   revalidatePath(`/${entity}/${entityId}`);
+}
+
+/** Share a property note with staff, or take it back. Managers only. */
+export async function setNoteSharedAction(form: FormData) {
+  const gate = await managerFor("properties");
+  if ("error" in gate) return;
+  const noteId = String(form.get("note_id") ?? "");
+  const entityId = String(form.get("__id") ?? "");
+  run(`UPDATE notes SET shared = ? WHERE id = ? AND entity = 'properties' AND entity_id = ?`, [
+    form.get("shared") === "1" ? 1 : 0,
+    noteId,
+    entityId,
+  ]);
+  revalidatePath(`/properties/${entityId}`);
 }
 
 export async function deleteNoteAction(form: FormData) {
@@ -637,6 +663,13 @@ export async function undoDeleteAction(deletionId: string): Promise<{ error?: st
 // Viewing a property is open to anyone given the section — a cleaner needs the
 // codes. Changing one is not: these all require a manager.
 
+/** Anyone who can open the section, staff included. */
+async function memberFor(section: string) {
+  const user = await requireUser();
+  if (!canAccessSection(user, section)) return { error: "Not permitted." as const };
+  return { user };
+}
+
 async function managerFor(section: string) {
   const user = await requireUser();
   if (!canAccessSection(user, section)) return { error: "Not permitted." as const };
@@ -691,7 +724,8 @@ export async function addPropertyFactAction(
   _prev: ActionState,
   form: FormData,
 ): Promise<ActionState> {
-  const gate = await managerFor("properties");
+  // staff may add too; addFact always files it as shared
+  const gate = await memberFor("properties");
   if ("error" in gate) return { error: gate.error };
 
   const propertyId = String(form.get("__id") ?? "");
@@ -707,8 +741,11 @@ export async function setPropertyFactAction(
   factId: string,
   patch: { label?: string; value?: string },
 ): Promise<{ error?: string }> {
-  const gate = await managerFor("properties");
+  const gate = await memberFor("properties");
   if ("error" in gate) return { error: gate.error };
+  const fact = getFact(factId);
+  if (!fact || fact.property_id !== propertyId) return { error: "Not found." };
+  if (!canChangeFact(gate.user, fact)) return { error: "Only what you added yourself." };
   setFact(factId, patch);
   revalidatePath(`/properties/${propertyId}`);
   return {};
@@ -727,10 +764,12 @@ export async function setPropertyFactVisibilityAction(
 }
 
 export async function deletePropertyFactAction(form: FormData) {
-  const gate = await managerFor("properties");
+  const gate = await memberFor("properties");
   if ("error" in gate) return;
   const propertyId = String(form.get("__id") ?? "");
-  deleteFact(String(form.get("fact_id") ?? ""), gate.user);
+  const fact = getFact(String(form.get("fact_id") ?? ""));
+  if (!fact || fact.property_id !== propertyId || !canChangeFact(gate.user, fact)) return;
+  deleteFact(fact.id, gate.user);
   revalidatePath(`/properties/${propertyId}`);
 }
 

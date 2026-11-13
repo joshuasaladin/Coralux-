@@ -65,13 +65,28 @@ export function addFact(propertyId: string, label: string, user: User): string |
     [propertyId],
   );
   const factId = newId();
+  // shared by default; only a manager can make one private afterwards
   run(
-    `INSERT INTO property_facts (id, property_id, label, staff_visible, sort, created_at)
-     VALUES (?, ?, ?, 1, ?, ?)`,
-    [factId, propertyId, trimmed, row?.next ?? 0, now()],
+    `INSERT INTO property_facts (id, property_id, label, staff_visible, sort, created_by, created_at)
+     VALUES (?, ?, ?, 1, ?, ?, ?)`,
+    [factId, propertyId, trimmed, row?.next ?? 0, user.id, now()],
   );
   logActivity("properties", propertyId, "info", `Added "${trimmed}"`, user.id);
   return factId;
+}
+
+export function getFact(factId: string): PropertyFact | undefined {
+  return one<PropertyFact>(`SELECT * FROM property_facts WHERE id = ?`, [factId]);
+}
+
+/**
+ * Who may change or remove a Good to know entry: a manager, anything; staff,
+ * only what they added themselves, and only while it is still shared — once
+ * a manager makes it private it is out of their sight and out of their hands.
+ */
+export function canChangeFact(user: { id: string; role: string }, fact: PropertyFact): boolean {
+  if (seesEverything(user)) return true;
+  return fact.created_by === user.id && Number(fact.staff_visible) === 1;
 }
 
 export function setFact(factId: string, patch: { label?: string; value?: string }): void {
