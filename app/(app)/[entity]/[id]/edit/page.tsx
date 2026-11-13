@@ -3,7 +3,7 @@ import RecordForm from "@/components/RecordForm";
 import { PageHeader } from "@/components/ui";
 import { requireUser } from "@/lib/auth";
 import { getEntity } from "@/lib/entities";
-import { canOpen, getRecord, recordTitle, refOptions, visibleFields } from "@/lib/records";
+import { canWrite, getRecord, recordTitle, refOptions, visibleFields } from "@/lib/records";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +17,7 @@ export default async function EditRecordPage({
   if (!entity) notFound();
 
   const user = await requireUser();
-  if (!canOpen(entity, user)) notFound();
+  if (!canWrite(entity, user)) notFound();
 
   const record = getRecord(entity, id);
   if (!record) notFound();

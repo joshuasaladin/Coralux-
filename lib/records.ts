@@ -8,7 +8,7 @@ import {
   isEnabled,
 } from "./entities";
 import { atLeast, type Role, type User } from "./auth";
-import { canAccessSection, type Accessor } from "./permissions";
+import { canAccessSection, canManageSection, isManagedSection, type Accessor } from "./permissions";
 import { capture, recordDeletion } from "./undo";
 
 export type Row = Record<string, any>;
@@ -32,6 +32,27 @@ export function visibleFields(entity: Entity, role: Role): Field[] {
 export function canOpen(entity: Entity, user: Accessor): boolean {
   if (!isEnabled(entity.key)) return false;
   return canAccessSection(user, entity.key, entity.minRole ?? "staff");
+}
+
+/**
+ * Whether this person may add records here and change them. In a managed
+ * section (Inventory) that is its own permission — see canManageSection();
+ * everywhere else, opening a section has always been enough.
+ */
+export function canWrite(entity: Entity, user: Accessor): boolean {
+  if (!canOpen(entity, user)) return false;
+  return isManagedSection(entity.key) ? canManageSection(user, entity.key) : true;
+}
+
+/**
+ * Whether this person may delete records here. In a managed section, the
+ * same people who may change them; everywhere else, managers and up.
+ */
+export function canRemove(entity: Entity, user: Accessor): boolean {
+  if (!canOpen(entity, user)) return false;
+  return isManagedSection(entity.key)
+    ? canManageSection(user, entity.key)
+    : atLeast(user.role, "manager");
 }
 
 /** Coerce a submitted form value into what SQLite should store. */
@@ -161,7 +182,7 @@ export function createRecord(
 ): string {
   const entity = getEntity(entityKey);
   if (!entity) throw new Error(`Unknown section: ${entityKey}`);
-  if (!canOpen(entity, user)) throw new Error("Not permitted");
+  if (!canWrite(entity, user)) throw new Error("Not permitted");
 
   const fields = writableFields(entity, user.role);
   const data: Row = { id: newId(), created_at: now(), updated_at: now() };
@@ -196,7 +217,7 @@ export function updateRecord(
 ): void {
   const entity = getEntity(entityKey);
   if (!entity) throw new Error(`Unknown section: ${entityKey}`);
-  if (!canOpen(entity, user)) throw new Error("Not permitted");
+  if (!canWrite(entity, user)) throw new Error("Not permitted");
 
   const before = getRecord(entity, recordId);
   if (!before) throw new Error("Record not found");
@@ -245,7 +266,7 @@ export function updateRecord(
 export function deleteRecord(entityKey: string, recordId: string, user: User) {
   const entity = getEntity(entityKey);
   if (!entity) throw new Error(`Unknown section: ${entityKey}`);
-  if (!atLeast(user.role, "manager")) throw new Error("Not permitted");
+  if (!canRemove(entity, user)) throw new Error("Not permitted");
 
   const existing = getRecord(entity, recordId);
   recordDeletion({

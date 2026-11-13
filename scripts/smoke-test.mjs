@@ -1031,6 +1031,99 @@ await step("that person now sees only those two sections", async () => {
   await ctx.close();
 });
 
+// ------------------------------------------------- inventory editing rights
+//
+// Opening Inventory lets someone read it. Changing it — adding, adjusting,
+// deleting — is handed out per person (lib/permissions MANAGED_SECTIONS).
+// Dwight is staff and, at this point, has Inventory but not editing.
+
+/** One of the list's quick-edit quantity forms, exactly as the page renders it. */
+const quantityForm = async (target) =>
+  target.locator('form:has(input[name="__field"][value="quantity"])').first().evaluate((form) => {
+    const fields = {};
+    for (const input of form.querySelectorAll("input")) fields[input.name] = input.value;
+    return fields;
+  });
+/** Post that form as whoever owns `ctx` — what a browser does with JS off. */
+const replay = (ctx, fields, value) =>
+  ctx.request.post(`${base}/inventory`, { multipart: { ...fields, value } });
+const quantityOf = (id) => {
+  const db = new Database("./data/coralux.db");
+  const row = db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(id);
+  db.close();
+  return row?.quantity;
+};
+
+let inventoryForm; // captured from the admin's page, replayed as Dwight
+await step("inventory: without editing, staff can read it but change nothing", async () => {
+  await page.goto(`${base}/inventory`);
+  await page.waitForSelector("text=Glass cleaner");
+  inventoryForm = await quantityForm(page);
+  if (!Object.keys(inventoryForm).some((k) => k.startsWith("$ACTION_ID_"))) {
+    throw new Error("could not find the quick-edit form's action id to replay");
+  }
+  const itemId = inventoryForm.__id;
+  const before = quantityOf(itemId);
+
+  const { ctx, p } = await asDwight();
+  await p.goto(`${base}/inventory`);
+  await p.waitForSelector("text=Glass cleaner");
+  if (await p.locator('a:has-text("New item")').count() > 0) throw new Error("New item offered without editing");
+  if (await p.locator('form:has(input[name="__field"])').count() > 0) {
+    throw new Error("quick-edit controls shown without editing");
+  }
+  await p.goto(`${base}/inventory/${itemId}`);
+  await p.waitForSelector("text=Quantity");
+  if (await p.locator('a:has-text("Edit")').count() > 0) throw new Error("Edit offered without editing");
+  if (await p.locator('button:has-text("Delete")').count() > 0) throw new Error("Delete offered without editing");
+  for (const path of ["/inventory/new", `/inventory/${itemId}/edit`]) {
+    if ((await p.goto(`${base}${path}`)).status() !== 404) throw new Error(`${path} should 404 without editing`);
+  }
+
+  // the server refuses too, not just the page: replay the admin's own form
+  await replay(ctx, inventoryForm, "999");
+  if (quantityOf(itemId) !== before) throw new Error("the server let staff change a quantity without editing");
+  await ctx.close();
+});
+
+await step("admin: a staff member can be given inventory editing", async () => {
+  await page.goto(`${base}/admin`);
+  await page.waitForSelector("text=Access control");
+  await page.click('button:has-text("Dwight Tromp")');
+  const tick = page.locator('input[aria-label="Dwight Tromp — can edit Inventory"]');
+  await tick.waitFor();
+  if (await tick.isChecked()) throw new Error("editing should start switched off");
+  await tick.check();
+  await page.waitForTimeout(900);
+
+  const { ctx, p } = await asDwight();
+  // the same replay now goes through — which also proves the refusal above
+  // was the permission talking, not a replay that never reached the server
+  await replay(ctx, inventoryForm, "7");
+  if (quantityOf(inventoryForm.__id) !== 7) throw new Error("staff with editing could not adjust a quantity");
+
+  await p.goto(`${base}/inventory`);
+  await p.waitForSelector('a:has-text("New item")');
+  if (await p.locator('form:has(input[name="__field"])').count() === 0) {
+    throw new Error("quick-edit controls missing for staff with editing");
+  }
+  await p.goto(`${base}/inventory/new`);
+  await p.fill("#name", "Staff Added Mop Heads");
+  await p.selectOption("#category", "cleaning_supplies");
+  await p.fill("#quantity", "4");
+  await p.click('button:has-text("Create item")');
+  await p.waitForSelector("text=Staff Added Mop Heads", { timeout: 15000 });
+  p.once("dialog", (d) => d.accept());
+  await p.click('button:has-text("Delete")');
+  await p.waitForURL(`${base}/inventory`, { timeout: 15000 });
+  await ctx.close();
+
+  const db = new Database("./data/coralux.db");
+  const left = db.prepare("SELECT COUNT(*) AS c FROM inventory WHERE name = 'Staff Added Mop Heads'").get().c;
+  db.close();
+  if (left !== 0) throw new Error("staff with editing could not delete the item they added");
+});
+
 await step("admin: reset that person back to role defaults", async () => {
   await page.goto(`${base}/admin`);
   await page.click('button:has-text("Dwight Tromp")');
@@ -1042,6 +1135,13 @@ await step("admin: reset that person back to role defaults", async () => {
   const navText = await p.locator("nav").first().innerText();
   if (!navText.includes("Tasks")) throw new Error(`reset did not restore role defaults, got:\n${navText}`);
   await ctx.close();
+  // role defaults mean no inventory editing for staff
+  const db = new Database("./data/coralux.db");
+  const grants = db.prepare(
+    "SELECT COUNT(*) AS c FROM user_section_manage m JOIN users u ON u.id = m.user_id WHERE u.email = 'dwight@coralux.aw'",
+  ).get().c;
+  db.close();
+  if (grants !== 0) throw new Error("reset to role defaults should take inventory editing away too");
 });
 
 await step("admin: Dashboard and Calendar can be handed out too", async () => {

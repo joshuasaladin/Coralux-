@@ -42,7 +42,13 @@ import {
   setFactVisibility,
   updateProperty,
 } from "./properties";
-import { canAccessSection, clearUserSections, setUserSections } from "./permissions";
+import {
+  canAccessSection,
+  clearUserSections,
+  isManagedSection,
+  setManageGrant,
+  setUserSections,
+} from "./permissions";
 import { capture, latestUndoable, recordDeletion, undoDeletion } from "./undo";
 
 export type ActionState = { error?: string; ok?: string } | null;
@@ -166,7 +172,11 @@ export async function setFieldAction(form: FormData) {
 
   const patch = new FormData();
   patch.set(field, String(form.get("value") ?? ""));
-  updateRecord(entityKey, recordId, patch, user);
+  try {
+    updateRecord(entityKey, recordId, patch, user);
+  } catch {
+    return; // not theirs to change; the page simply stays as it was
+  }
 
   revalidatePath(`/${entityKey}`);
   revalidatePath(`/${entityKey}/${recordId}`);
@@ -177,7 +187,11 @@ export async function deleteRecordAction(form: FormData) {
   const user = await requireUser();
   const entityKey = String(form.get("__entity") ?? "");
   const recordId = String(form.get("__id") ?? "");
-  deleteRecord(entityKey, recordId, user);
+  try {
+    deleteRecord(entityKey, recordId, user);
+  } catch {
+    redirect(`/${entityKey}/${recordId}`);
+  }
   revalidatePath(`/${entityKey}`);
   revalidatePath("/");
   redirect(`/${entityKey}`);
@@ -485,6 +499,38 @@ export async function updateUserAccessAction(
   logActivity("users", targetId, "access", "Section access updated", user.id);
   revalidatePath("/admin");
   revalidatePath("/", "layout");
+  return {};
+}
+
+/**
+ * Let one staff member change a managed section (Inventory) — add, adjust and
+ * delete — or take that back. Same guard rails as section access: admins
+ * only, never on yourself, never on an owner.
+ */
+export async function setManageGrantAction(
+  targetId: string,
+  sectionKey: string,
+  on: boolean,
+): Promise<{ error?: string }> {
+  const user = await requireUser();
+  if (!atLeast(user.role, "admin")) return { error: "Admins only." };
+  if (!isManagedSection(sectionKey)) return { error: "Not something handed out per person." };
+
+  const target = one<{ role: Role }>(`SELECT role FROM users WHERE id = ?`, [targetId]);
+  if (!target) return { error: "That account no longer exists." };
+  if (targetId === user.id) return { error: "You cannot change your own access." };
+  if (target.role === "owner") return { error: "Owners always have full access." };
+
+  setManageGrant(targetId, sectionKey, on);
+  logActivity(
+    "users",
+    targetId,
+    "access",
+    `${on ? "Can now edit" : "Can no longer edit"} ${sectionKey}`,
+    user.id,
+  );
+  revalidatePath("/admin");
+  revalidatePath(`/${sectionKey}`);
   return {};
 }
 

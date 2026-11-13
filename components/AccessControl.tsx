@@ -2,8 +2,8 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import Icon from "./Icon";
-import { setDoorCodeAction, updateUserAccessAction } from "@/lib/actions";
-import type { Role } from "@/lib/roles";
+import { setDoorCodeAction, setManageGrantAction, updateUserAccessAction } from "@/lib/actions";
+import { atLeast, type Role } from "@/lib/roles";
 import type { PermissionSection } from "@/lib/permissions";
 
 export type AccessPerson = {
@@ -17,6 +17,8 @@ export type AccessPerson = {
   keys: string[];
   /** What their role alone would give them, for the reset button. */
   roleDefaultKeys: string[];
+  /** Sections they may change, not just read, beyond what their role gives. */
+  manage: string[];
   /** The signed-in admin's own row — deliberately not editable. */
   self: boolean;
   /** The code this person uses to open the properties. */
@@ -76,6 +78,7 @@ function PersonRow({
 }) {
   const [keys, setKeys] = useState<string[]>(person.keys);
   const [custom, setCustom] = useState(person.custom);
+  const [manage, setManage] = useState<string[]>(person.manage);
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
 
@@ -90,15 +93,30 @@ function PersonRow({
       if (next === null) {
         setCustom(false);
         setKeys(person.roleDefaultKeys);
+        setManage([]); // back to the role: editing goes too
       } else {
         setCustom(true);
         setKeys(next);
+        // the server drops editing with the section; mirror it
+        setManage((m) => m.filter((k) => next.includes(k)));
       }
     });
   };
 
   const toggle = (key: string) => {
     save(keys.includes(key) ? keys.filter((k) => k !== key) : [...keys, key]);
+  };
+
+  // ticks at once, and unticks itself again if the server says no
+  const toggleManage = (key: string) => {
+    const on = !manage.includes(key);
+    const flip = (value: boolean) =>
+      setManage((m) => (value ? [...new Set([...m, key])] : m.filter((k) => k !== key)));
+    flip(on);
+    startTransition(async () => {
+      const result = await setManageGrantAction(person.id, key, on);
+      if (result.error) flip(!on);
+    });
   };
 
   return (
@@ -192,20 +210,30 @@ function PersonRow({
                   <div key={group} className="mb-2">
                     <div className="label mb-1">{group}</div>
                     {items.map((s) => (
-                      <label
-                        key={s.key}
-                        className="flex items-center gap-2 py-1 cursor-pointer text-sm"
-                        style={{ color: "var(--ink-2)" }}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={keys.includes(s.key)}
-                          disabled={pending}
-                          onChange={() => toggle(s.key)}
-                          aria-label={`${person.name} — ${s.label}`}
-                        />
-                        {s.label}
-                      </label>
+                      <div key={s.key}>
+                        <label
+                          className="flex items-center gap-2 py-1 cursor-pointer text-sm"
+                          style={{ color: "var(--ink-2)" }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={keys.includes(s.key)}
+                            disabled={pending}
+                            onChange={() => toggle(s.key)}
+                            aria-label={`${person.name} — ${s.label}`}
+                          />
+                          {s.label}
+                        </label>
+                        {MANAGED.includes(s.key) && keys.includes(s.key) && (
+                          <ManageLine
+                            person={person}
+                            section={s}
+                            granted={manage.includes(s.key)}
+                            pending={pending}
+                            onToggle={() => toggleManage(s.key)}
+                          />
+                        )}
+                      </div>
                     ))}
                   </div>
                 ))}
@@ -215,6 +243,51 @@ function PersonRow({
         </div>
       )}
     </div>
+  );
+}
+
+/** Mirrors MANAGED_SECTIONS in lib/permissions.ts (that file is server-only). */
+const MANAGED = ["inventory"];
+
+/**
+ * Under a section that can be handed out for editing: whether this person may
+ * change it, not just read it. Managers and up always may, so for them it is
+ * a statement rather than a choice.
+ */
+function ManageLine({
+  person,
+  section,
+  granted,
+  pending,
+  onToggle,
+}: {
+  person: AccessPerson;
+  section: PermissionSection;
+  granted: boolean;
+  pending: boolean;
+  onToggle: () => void;
+}) {
+  if (atLeast(person.role, "manager")) {
+    return (
+      <p className="text-xs pl-6 pb-1" style={{ color: "var(--ink-3)" }}>
+        Can add, adjust and delete — always, as a {person.role}
+      </p>
+    );
+  }
+  return (
+    <label
+      className="flex items-center gap-2 pl-6 pb-1 cursor-pointer text-xs"
+      style={{ color: "var(--ink-2)" }}
+    >
+      <input
+        type="checkbox"
+        checked={granted}
+        disabled={pending}
+        onChange={onToggle}
+        aria-label={`${person.name} — can edit ${section.label}`}
+      />
+      Can add, adjust and delete items
+    </label>
   );
 }
 

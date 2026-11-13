@@ -13,6 +13,8 @@ import { ENTITIES, getEntity, isEnabled, optionLabel, optionTone } from "@/lib/e
 import { formatDate, money, timeAgo } from "@/lib/format";
 import {
   canOpen,
+  canRemove,
+  canWrite,
   getRecord,
   listActivity,
   listFilesFor,
@@ -88,10 +90,12 @@ export default async function RecordPage({
                 Record payment
               </Link>
             )}
-            <Link href={`/${entity.key}/${id}/edit`} className="btn btn-primary">
-              Edit
-            </Link>
-            {atLeast(user.role, "manager") && (
+            {canWrite(entity, user) && (
+              <Link href={`/${entity.key}/${id}/edit`} className="btn btn-primary">
+                Edit
+              </Link>
+            )}
+            {canRemove(entity, user) && (
               <DeleteRecordButton entityKey={entity.key} recordId={id} label={entity.singular} />
             )}
           </>
@@ -151,13 +155,15 @@ export default async function RecordPage({
                 title={`${rel.label} (${rows.length})`}
                 dense
                 action={
-                  <Link
-                    href={`/${rel.entity}/new?${rel.fk}=${id}`}
-                    className="btn btn-sm"
-                  >
-                    <Icon name="plus" className="w-3.5 h-3.5" />
-                    Add
-                  </Link>
+                  canWrite(child, user) ? (
+                    <Link
+                      href={`/${rel.entity}/new?${rel.fk}=${id}`}
+                      className="btn btn-sm"
+                    >
+                      <Icon name="plus" className="w-3.5 h-3.5" />
+                      Add
+                    </Link>
+                  ) : undefined
                 }
               >
                 <DataTable
@@ -165,6 +171,7 @@ export default async function RecordPage({
                   rows={rows}
                   columns={childColumns}
                   refMaps={refMapsFor(child)}
+                  readOnly={!canWrite(child, user)}
                   emptyTitle={`No ${rel.label.toLowerCase()} linked yet`}
                   emptyHint="Use Add to create one against this record."
                 />

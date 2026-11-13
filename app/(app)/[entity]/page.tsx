@@ -7,7 +7,7 @@ import { PageHeader } from "@/components/ui";
 import { requireUser } from "@/lib/auth";
 import { getEntity, isEnabled } from "@/lib/entities";
 import { money } from "@/lib/format";
-import { canOpen, listRecords, refMapsFor, visibleFields } from "@/lib/records";
+import { canOpen, canWrite, listRecords, refMapsFor, visibleFields } from "@/lib/records";
 
 export const dynamic = "force-dynamic";
 
@@ -90,6 +90,8 @@ export default async function ListPage({
   };
 
   const totals = summarise(entity.key, rows);
+  // Inventory is read-only unless this person was given editing (lib/permissions)
+  const writable = canWrite(entity, user);
 
   return (
     <>
@@ -98,10 +100,12 @@ export default async function ListPage({
         title={entity.label}
         blurb={entity.blurb}
         actions={
-          <Link href={`/${entity.key}/new`} className="btn btn-primary">
-            <Icon name="plus" />
-            New {entity.singular.toLowerCase()}
-          </Link>
+          writable ? (
+            <Link href={`/${entity.key}/new`} className="btn btn-primary">
+              <Icon name="plus" />
+              New {entity.singular.toLowerCase()}
+            </Link>
+          ) : undefined
         }
       />
 
@@ -140,6 +144,7 @@ export default async function ListPage({
           rows={rows}
           columns={columns}
           refMaps={refMaps}
+          readOnly={!writable}
           emptyTitle={
             search || Object.keys(filters).length
               ? "Nothing matches those filters"

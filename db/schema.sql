@@ -497,6 +497,15 @@ CREATE INDEX IF NOT EXISTS idx_deleted_items_open
 -- them by hand. A user with no rows here simply gets what their role gets
 -- (the defaults in lib/entities.ts), so nobody has to be configured unless
 -- you actually want them to differ.
+-- Who may change records in a section, not just read them, where that is
+-- handed out per person (Inventory). Managers and up always may; this lists
+-- the staff given it on top of their role.
+CREATE TABLE IF NOT EXISTS user_section_manage (
+  user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  section_key TEXT NOT NULL,
+  PRIMARY KEY (user_id, section_key)
+);
+
 CREATE TABLE IF NOT EXISTS user_section_access (
   user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   section_key TEXT NOT NULL,

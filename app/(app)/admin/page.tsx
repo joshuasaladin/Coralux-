@@ -27,6 +27,7 @@ export default async function AdminPage() {
     custom: access[u.id]!.custom,
     keys: access[u.id]!.keys,
     roleDefaultKeys: access[u.id]!.roleDefaultKeys,
+    manage: access[u.id]!.manage,
     self: u.id === user.id,
     doorCode: (u as { door_code?: string | null }).door_code ?? null,
   }));

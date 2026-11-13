@@ -101,6 +101,50 @@ export function sectionKeyFromHref(href: string): string {
   return href.replace(/^\//, "").split(/[/?]/)[0] ?? "";
 }
 
+// ----------------------------------------------------------------- managing
+
+/**
+ * Sections where the right to change things is handed out per person rather
+ * than by role. Opening Inventory lets someone read it; to add, adjust or
+ * delete items a staff member has to be given it as well — a manager always
+ * has it. Every other section keeps the rules it had.
+ */
+export const MANAGED_SECTIONS = ["inventory"] as const;
+
+export function isManagedSection(key: string): boolean {
+  return (MANAGED_SECTIONS as readonly string[]).includes(key);
+}
+
+/** The managed sections this person has been given editing in. */
+export function manageGrantsFor(userId: string): Set<string> {
+  const rows = all<{ section_key: string }>(
+    `SELECT section_key FROM user_section_manage WHERE user_id = ?`,
+    [userId],
+  );
+  return new Set(rows.map((r) => r.section_key));
+}
+
+/**
+ * Whether this person may add, change and remove records in a section — not
+ * just read it. Opening the section comes first; then managers and up always
+ * may, and staff only where they have been given it.
+ */
+export function canManageSection(user: Accessor, key: string): boolean {
+  if (!canAccessSection(user, key)) return false;
+  if (atLeast(user.role, "manager")) return true;
+  return isManagedSection(key) && manageGrantsFor(user.id).has(key);
+}
+
+/** Give or take away editing in one managed section. */
+export function setManageGrant(userId: string, key: string, on: boolean): void {
+  if (!isManagedSection(key)) return;
+  if (on) {
+    run(`INSERT OR IGNORE INTO user_section_manage (user_id, section_key) VALUES (?, ?)`, [userId, key]);
+  } else {
+    run(`DELETE FROM user_section_manage WHERE user_id = ? AND section_key = ?`, [userId, key]);
+  }
+}
+
 // ------------------------------------------------------------------ editing
 
 /** Give one person an exact set of sections, replacing whatever they had. */
@@ -115,12 +159,18 @@ export function setUserSections(userId: string, keys: string[]): void {
       [userId, key],
     );
   }
+  // editing goes with the section: tick Inventory again later and they come
+  // back able to read it, not quietly able to change it
+  for (const key of MANAGED_SECTIONS) {
+    if (!keys.includes(key)) setManageGrant(userId, key, false);
+  }
 }
 
-/** Put one person back on their role's defaults. */
+/** Put one person back on their role's defaults — editing grants included. */
 export function clearUserSections(userId: string): void {
   run(`DELETE FROM user_section_access WHERE user_id = ?`, [userId]);
   run(`DELETE FROM user_access_custom WHERE user_id = ?`, [userId]);
+  run(`DELETE FROM user_section_manage WHERE user_id = ?`, [userId]);
 }
 
 /** The sections a role gets on its own, before anyone customises a person. */
@@ -133,14 +183,15 @@ export function sectionsForRole(role: Role): string[] {
  * one pass. `custom: false` means they are still on their role's defaults. */
 export function accessOverview(
   users: { id: string; role: Role }[],
-): Record<string, { custom: boolean; keys: string[]; roleDefaultKeys: string[] }> {
-  const out: Record<string, { custom: boolean; keys: string[]; roleDefaultKeys: string[] }> = {};
+): Record<string, { custom: boolean; keys: string[]; roleDefaultKeys: string[]; manage: string[] }> {
+  const out: Record<string, { custom: boolean; keys: string[]; roleDefaultKeys: string[]; manage: string[] }> = {};
   for (const user of users) {
     const custom = customSectionsFor(user.id);
     const roleDefaultKeys = sectionsForRole(user.role);
+    const manage = [...manageGrantsFor(user.id)];
     out[user.id] = custom
-      ? { custom: true, keys: [...custom], roleDefaultKeys }
-      : { custom: false, keys: roleDefaultKeys, roleDefaultKeys };
+      ? { custom: true, keys: [...custom], roleDefaultKeys, manage }
+      : { custom: false, keys: roleDefaultKeys, roleDefaultKeys, manage };
   }
   return out;
 }
