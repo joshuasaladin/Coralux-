@@ -390,6 +390,9 @@ export default async function DashboardPage() {
                       </span>
                       <span className="text-sm flex-1 truncate" style={{ color: "var(--ink)" }}>
                         {item.title}
+                        {item.kind === "task" && item.detail && (
+                          <span style={{ color: "var(--ink-3)" }}> · {item.detail}</span>
+                        )}
                       </span>
                       <Chip tone={item.kind === "task" ? "neutral" : "info"}>{item.kind === "task" ? "Task" : item.kind}</Chip>
                     </Link>

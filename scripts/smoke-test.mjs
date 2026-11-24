@@ -127,6 +127,114 @@ await step("edit the task to done", async () => {
 });
 await page.screenshot({ path: `${out}/03-task-detail.png`, fullPage: true });
 
+// ------------------------------------------------------------ repeating tasks
+//
+// "Repeats" used to be a label and nothing more. Now completing a repeating
+// task lines up the next one, due one interval on (lib/recurrence.ts), for
+// the same property.
+
+/** YYYY-MM-DD plus calendar months, clamped like lib/recurrence.ts. */
+const plusMonths = (day, months) => {
+  const [y, m, d] = day.split("-").map(Number);
+  const first = new Date(Date.UTC(y, m - 1 + months, 1));
+  const last = new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth() + 1, 0)).getUTCDate();
+  first.setUTCDate(Math.min(d, last));
+  return first.toISOString().slice(0, 10);
+};
+const acDue = aruba.day(3);
+let acTaskUrl;
+
+await step("tasks: a repeating task can be linked to a property", async () => {
+  await page.goto(`${base}/tasks/new`);
+  await page.fill('input[name="title"]', "AC maintenance (smoke)");
+  await page.selectOption('select[name="property_id"]', { label: "Villa Coral Bay" });
+  await page.selectOption('select[name="recurrence"]', "semiannual");
+  await page.fill('input[name="due_date"]', acDue);
+  await page.click('button[type="submit"]');
+  await page.waitForSelector("text=AC maintenance (smoke)", { timeout: 15000 });
+  acTaskUrl = page.url();
+  const body = await page.locator("body").innerText();
+  for (const want of ["Villa Coral Bay", "Every 6 months"]) {
+    if (!body.includes(want)) throw new Error(`task detail should show ${want}`);
+  }
+});
+
+const nextOf = (id) => {
+  const db = new Database("./data/coralux.db");
+  const rows = db.prepare("SELECT * FROM tasks WHERE recurs_from = ?").all(id);
+  db.close();
+  return rows;
+};
+
+await step("tasks: completing it lines up the next one, six months on, same property", async () => {
+  const id = new URL(acTaskUrl).pathname.split("/").pop();
+  if (nextOf(id).length !== 0) throw new Error("nothing should be lined up before it is done");
+
+  await page.click('a:has-text("Edit")');
+  await page.waitForSelector('select[name="status"]');
+  await page.selectOption('select[name="status"]', "done");
+  await page.click('button[type="submit"]');
+  await page.waitForSelector("text=Done", { timeout: 15000 });
+
+  const next = nextOf(id);
+  if (next.length !== 1) throw new Error(`expected one follow-up task, got ${next.length}`);
+  const [n] = next;
+  const want = plusMonths(acDue, 6);
+  if (n.due_date !== want) throw new Error(`next one should be due ${want}, got ${n.due_date}`);
+  if (n.status !== "todo") throw new Error(`next one should be open, got ${n.status}`);
+  if (n.title !== "AC maintenance (smoke)" || n.recurrence !== "semiannual") {
+    throw new Error("next one should be the same repeating task");
+  }
+  const db = new Database("./data/coralux.db");
+  const coralBay = db.prepare("SELECT id FROM properties WHERE name = 'Villa Coral Bay'").get();
+  db.close();
+  if (n.property_id !== coralBay.id) throw new Error("next one lost its property");
+
+  // and it is in the Recurring tab, with the property showing in the list
+  await page.goto(`${base}/tasks?tab=recurring`);
+  const row = page.locator("tr", { hasText: "AC maintenance (smoke)" }).first();
+  await row.waitFor();
+  if (!(await row.innerText()).includes("Villa Coral Bay")) throw new Error("the list should show the property");
+});
+
+await step("tasks: reopening and completing again does not make a second one", async () => {
+  const id = new URL(acTaskUrl).pathname.split("/").pop();
+  for (const status of ["todo", "done"]) {
+    await page.goto(`${acTaskUrl}/edit`);
+    await page.selectOption('select[name="status"]', status);
+    await page.click('button[type="submit"]');
+    await page.waitForURL(acTaskUrl, { timeout: 15000 });
+  }
+  if (nextOf(id).length !== 1) throw new Error(`still expected exactly one follow-up, got ${nextOf(id).length}`);
+});
+
+await step("dashboard: tasks say which property they are for", async () => {
+  // titles that do not name the property themselves, so only the link can
+  const db = new Database("./data/coralux.db");
+  const coralBay = db.prepare("SELECT id FROM properties WHERE name = 'Villa Coral Bay'").get();
+  const add = db.prepare(
+    `INSERT INTO tasks (id, title, status, priority, due_date, property_id, recurrence, created_at, updated_at)
+     VALUES (?, ?, 'todo', 'medium', ?, ?, 'none', ?, ?)`,
+  );
+  const stamp = new Date().toISOString();
+  add.run("smoke-due-today", "Pool pump check (smoke)", aruba.day(0), coralBay.id, stamp, stamp);
+  add.run("smoke-due-soon", "Gutter check (smoke)", aruba.day(2), coralBay.id, stamp, stamp);
+  db.close();
+
+  await page.goto(`${base}/`);
+  // due today: in Needs attention, with the property on its second line
+  const due = page.locator('a[href="/tasks/smoke-due-today"]').first();
+  if (!(await due.innerText()).includes("Villa Coral Bay")) {
+    throw new Error("Needs attention should say which property a task is for");
+  }
+  // due in two days: in Coming up, with the property after the title
+  const soon = page.locator('a[href="/tasks/smoke-due-soon"]').first();
+  if (!(await soon.innerText()).includes("Villa Coral Bay")) {
+    throw new Error("Coming up should say which property a task is for");
+  }
+});
+
+
 await step("vendor detail shows linked records and notes", async () => {
   await page.goto(`${base}/vendors`);
   await page.click("text=ABC Pool Services");

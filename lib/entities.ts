@@ -116,6 +116,7 @@ const RECURRENCE: Option[] = [
   { value: "weekly", label: "Weekly" },
   { value: "monthly", label: "Monthly" },
   { value: "quarterly", label: "Quarterly" },
+  { value: "semiannual", label: "Every 6 months" },
   { value: "yearly", label: "Yearly" },
 ];
 
@@ -206,7 +207,8 @@ export const ENTITIES: Record<EntityKey, Entity> = {
       { name: "assignee_id", label: "Assigned to", type: "ref", ref: "employees", inList: true },
       { name: "recurrence", label: "Repeats", type: "select", options: RECURRENCE },
       { name: "project_id", label: "Project", type: "ref", ref: "projects", group: "Links" },
-      { name: "property_id", label: "Property", type: "ref", ref: "properties", group: "Links" },
+      // in the list too: "AC maintenance" means little until you know where
+      { name: "property_id", label: "Property", type: "ref", ref: "properties", group: "Links", inList: true },
       { name: "vendor_id", label: "Vendor", type: "ref", ref: "vendors", group: "Links" },
     ],
     tabs: [

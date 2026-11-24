@@ -39,6 +39,9 @@ function addMissingColumns(db: Database.Database) {
   if (!columnNames(db, "property_facts").has("created_by")) {
     db.exec(`ALTER TABLE property_facts ADD COLUMN created_by TEXT`);
   }
+  if (!columnNames(db, "tasks").has("recurs_from")) {
+    db.exec(`ALTER TABLE tasks ADD COLUMN recurs_from TEXT`);
+  }
   if (!columnNames(db, "notes").has("shared")) {
     // existing notes were all written while only managers could read them
     db.exec(`ALTER TABLE notes ADD COLUMN shared INTEGER NOT NULL DEFAULT 0`);

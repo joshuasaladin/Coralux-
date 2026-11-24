@@ -151,8 +151,11 @@ CREATE TABLE IF NOT EXISTS tasks (
   project_id  TEXT REFERENCES projects(id) ON DELETE SET NULL,
   property_id TEXT REFERENCES properties(id) ON DELETE SET NULL,
   vendor_id   TEXT REFERENCES vendors(id) ON DELETE SET NULL,
-  recurrence  TEXT DEFAULT 'none',               -- none | daily | weekly | monthly | quarterly | yearly
+  recurrence  TEXT DEFAULT 'none',               -- none | daily | weekly | monthly | quarterly | semiannual | yearly
   completed_at TEXT,
+  -- the repeating task this one was made from when that one was completed;
+  -- also what stops reopening and re-completing it making a second copy
+  recurs_from TEXT,
   created_at  TEXT NOT NULL,
   updated_at  TEXT NOT NULL
 );

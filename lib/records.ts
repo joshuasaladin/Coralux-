@@ -6,10 +6,13 @@ import {
   type Field,
   getEntity,
   isEnabled,
+  isPageEnabled,
 } from "./entities";
 import { atLeast, type Role, type User } from "./auth";
 import { canAccessSection, canManageSection, isManagedSection, type Accessor } from "./permissions";
 import { capture, recordDeletion } from "./undo";
+import { localToday } from "./clock";
+import { nextDueDate, repeats } from "./recurrence";
 
 export type Row = Record<string, any>;
 
@@ -24,7 +27,9 @@ export function visibleFields(entity: Entity, role: Role): Field[] {
   return entity.fields.filter((f) => {
     if (f.restricted && !atLeast(role, f.restricted)) return false;
     // a link to a section that is not switched on would only lead nowhere
-    if (f.type === "ref" && f.ref && !isEnabled(f.ref)) return false;
+    // Properties has its own page rather than the standard one, but it is just
+    // as switched on — so a task can still be linked to one.
+    if (f.type === "ref" && f.ref && !isEnabled(f.ref) && !isPageEnabled(`/${f.ref}`)) return false;
     return true;
   });
 }
@@ -206,6 +211,7 @@ export function createRecord(
 
   logActivity(entity.key, data.id, "created", `${entity.singular} created`, user.id);
   afterWrite(entity, data.id, user);
+  if (entity.key === "tasks" && data.status === "done") rollRecurringTask(data.id, user);
   return data.id;
 }
 
@@ -261,6 +267,11 @@ export function updateRecord(
     );
   }
   afterWrite(entity, recordId, user);
+  // completing a repeating task lines up the next one — on the step to done
+  // only, so editing an old finished task later never conjures a new one
+  if (entity.key === "tasks" && before.status !== "done" && form.get("status") === "done") {
+    rollRecurringTask(recordId, user);
+  }
 }
 
 export function deleteRecord(entityKey: string, recordId: string, user: User) {
@@ -297,6 +308,37 @@ function afterWrite(entity: Entity, recordId: string, user: User) {
   }
   if (entity.key === "invoices") syncInvoiceStatus(recordId, user);
   if (entity.key === "inventory") syncInventoryStatus(recordId, user);
+}
+
+/**
+ * When a repeating task is completed, create the next one: same task, same
+ * property, same person, due one interval on (lib/recurrence.ts says from
+ * when). The finished one stays in Completed as the record of it being done.
+ *
+ * At most one follow-up per task, whatever happens: reopen a task and tick it
+ * off again and the follow-up already exists, so nothing new is made.
+ */
+export function rollRecurringTask(taskId: string, user?: User): string | null {
+  const task = one<Row>(`SELECT * FROM tasks WHERE id = ?`, [taskId]);
+  if (!task || task.status !== "done" || !repeats(task.recurrence)) return null;
+  if (one(`SELECT id FROM tasks WHERE recurs_from = ?`, [taskId])) return null;
+
+  const due = nextDueDate(task.recurrence, task.due_date, localToday());
+  const nextId = newId();
+  run(
+    `INSERT INTO tasks (id, title, description, status, priority, due_date, assignee_id,
+                        project_id, property_id, vendor_id, recurrence, recurs_from,
+                        created_at, updated_at)
+     VALUES (?, ?, ?, 'todo', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      nextId, task.title, task.description, task.priority, due, task.assignee_id,
+      task.project_id, task.property_id, task.vendor_id, task.recurrence, taskId,
+      now(), now(),
+    ],
+  );
+  logActivity("tasks", nextId, "created", "Lined up when the last one was completed", user?.id ?? null);
+  logActivity("tasks", taskId, "info", `Next one due ${due}`, user?.id ?? null);
+  return nextId;
 }
 
 /**

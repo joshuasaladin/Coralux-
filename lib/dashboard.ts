@@ -8,8 +8,8 @@ import type { Row } from "./records";
 // Aruba's date, not the server's UTC one — see lib/clock.ts
 const today = () => localToday();
 const plusDays = (n: number) => {
-  const d = new Date();
-  d.setDate(d.getDate() + n);
+  const d = new Date(`${today()}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
   return d.toISOString().slice(0, 10);
 };
 
@@ -97,8 +97,9 @@ export function attentionItems(role: Role, limit = 12): Attention[] {
   const seesMoney = atLeast(role, "manager") && isEnabled("invoices");
 
   if (isEnabled("tasks")) for (const t of all<Row>(
-    `SELECT t.*, e.name AS assignee FROM tasks t
+    `SELECT t.*, e.name AS assignee, p.name AS property FROM tasks t
        LEFT JOIN employees e ON e.id = t.assignee_id
+       LEFT JOIN properties p ON p.id = t.property_id
       WHERE t.status != 'done' AND t.due_date IS NOT NULL AND t.due_date <= ?
       ORDER BY t.due_date ASC LIMIT 8`,
     [today()],
@@ -107,7 +108,10 @@ export function attentionItems(role: Role, limit = 12): Attention[] {
       kind: "Task",
       tone: t.due_date < today() ? "bad" : "warn",
       title: t.title,
-      detail: t.assignee ? `Assigned to ${t.assignee}` : "Unassigned",
+      // which property first: "AC maintenance" alone does not say where
+      detail: [t.property, t.assignee ? `Assigned to ${t.assignee}` : "Unassigned"]
+        .filter(Boolean)
+        .join(" · "),
       href: `/tasks/${t.id}`,
       when: t.due_date,
     });
@@ -218,8 +222,9 @@ export function upcomingAgenda(days = 21) {
   }));
 
   const tasks = (isEnabled("tasks") ? all<Row>(
-    `SELECT t.*, em.name AS assignee FROM tasks t
+    `SELECT t.*, em.name AS assignee, p.name AS property FROM tasks t
        LEFT JOIN employees em ON em.id = t.assignee_id
+       LEFT JOIN properties p ON p.id = t.property_id
       WHERE t.status != 'done' AND t.due_date BETWEEN ? AND ? ORDER BY t.due_date ASC`,
     [today(), plusDays(days)],
   ) : []).map((t) => ({
@@ -228,7 +233,8 @@ export function upcomingAgenda(days = 21) {
     title: t.title as string,
     kind: "task",
     href: `/tasks/${t.id}`,
-    detail: (t.assignee ?? "Unassigned") as string,
+    // the agenda line only has room for where — "AC maintenance" at which house
+    detail: (t.property ?? "") as string,
   }));
 
   return [...events, ...tasks].sort((a, b) => a.date.localeCompare(b.date));
